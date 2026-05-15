@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Dashboard สถิตินักเรียน</h2>
+        <a href="/admin" class="btn btn-secondary">กลับหน้า Admin</a>
+    </div>
+
+    <div class="row">
+        <!-- ทำคะแนนสูง -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm border-success">
+                <div class="card-header bg-success text-white fw-bold">🏆 ท็อป 10 คะแนนเฉลี่ยสูงสุด</div>
+                <ul class="list-group list-group-flush">
+                    {% for u in top %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>{{ u.username }} ({{ u.student_id }})</span> <span class="badge bg-success rounded-pill">{{ "%.2f"|format(u.avg) }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- ทำคะแนนน่าเป็นห่วง -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm border-danger">
+                <div class="card-header bg-danger text-white fw-bold">⚠️ นักศึกษาที่คะแนนต่ำกว่าเกณฑ์ (< 2.5)</div>
+                <ul class="list-group list-group-flush">
+                    {% for u in risk %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>{{ u.username }} ({{ u.student_id }})</span> <span class="badge bg-danger rounded-pill">{{ "%.2f"|format(u.avg) }}</span>
+                    </li>
+                    {% else %}
+                    <li class="list-group-item text-center text-muted">ไม่มีนักศึกษาในกลุ่มเสี่ยง</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- เข้าใช้งานบ่อยสุด -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm border-primary">
+                <div class="card-header bg-primary text-white fw-bold">🔥 เข้าใช้งานระบบบ่อยที่สุด (ทำโจทย์หลายครั้ง)</div>
+                <ul class="list-group list-group-flush">
+                    {% for u in active %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>{{ u.username }} ({{ u.student_id }})</span> <span class="text-primary fw-bold">{{ u.count }} ครั้ง</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- ไม่เคยเข้าใช้งาน -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm border-secondary">
+                <div class="card-header bg-secondary text-white fw-bold">👻 ไม่เคยเข้าใช้งานระบบเลย</div>
+                <ul class="list-group list-group-flush">
+                    {% for u in inactive %}
+                    <li class="list-group-item">{{ u.username }} ({{ u.student_id }})</li>
+                    {% else %}
+                    <li class="list-group-item text-center text-muted">ทุกคนเข้าใช้งานระบบแล้ว 🎉</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

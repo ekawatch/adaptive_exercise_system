@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <h2>ข้อมูลผู้ใช้งาน</h2>
+        <hr>
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row mb-2">
+                    <div class="col-sm-4 fw-bold">Username:</div>
+                    <div class="col-sm-8">{{ current_user.username }}</div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-4 fw-bold">รหัสนักศึกษา:</div>
+                    <div class="col-sm-8">{{ current_user.student_id }}</div>
+                </div>
+            </div>
+        </div>
+
+        <h4>เปลี่ยนรหัสผ่าน</h4>
+        <div class="card bg-light">
+            <div class="card-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    
+                    <!-- เพิ่มส่วนนี้: ช่องกรอกรหัสเดิม -->
+                    <div class="mb-3">
+                        <label class="form-label">รหัสผ่านเดิม (Current Password)</label>
+                        {{ form.current_password(class="form-control") }}
+                        {% for error in form.current_password.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">รหัสผ่านใหม่ (New Password)</label>
+                        {{ form.password(class="form-control") }}
+                        {% for error in form.password.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <button type="submit" class="btn btn-warning">บันทึกรหัสผ่านใหม่</button>
+                </form>
+            </div>
+        </div>
+        <div class="mt-4">
+            <a href="/" class="btn btn-secondary">&laquo; กลับหน้าหลัก</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

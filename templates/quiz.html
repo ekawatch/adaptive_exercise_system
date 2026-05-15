@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="quiz-container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3><span class="text-secondary">[{{ subject }}]</span> <span class="text-primary">{{ topic }}</span></h3>
+        <span class="badge bg-secondary fs-6" id="q-progress">ข้อที่ 1/{{ max_q }}</span>
+    </div>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div id="error-alert" class="alert alert-danger" style="display:none;"></div>
+            
+            <h5 class="card-title my-3" id="question-text" style="line-height: 1.8;">Loading...</h5>
+            <!-- คอนเทนเนอร์แสดงรูปภาพ -->
+            <div id="image-container" class="text-center mb-3"></div>
+            
+            <div id="choices-area" class="d-grid gap-2 mt-4"></div>
+            <div class="mt-4 text-end">
+                <button id="next-btn" class="btn btn-primary btn-lg" style="display:none;" onclick="loadQuestion()">ข้อถัดไป &raquo;</button>
+            </div>
+        </div>
+        <div class="card-footer text-muted d-flex justify-content-between">
+            <span>Difficulty Level: <span id="diff-display" class="fw-bold">-</span></span>
+            <small>Adaptive Mode</small>
+        </div>
+    </div>
+</div>
+
+<div id="result-container" style="display:none;" class="text-center mt-5">
+    <h3>🎉 สรุปผลการทดสอบ</h3>
+    <p class="fs-4">คะแนนเฉลี่ยความยาก: <span id="final-score" class="fw-bold text-primary"></span></p>
+    <a href="/" class="btn btn-primary mt-4 btn-lg">กลับหน้าหลัก</a>
+</div>
+
+<script>
+    const sessionId = {{ session_id }};
+    const subject = "{{ subject }}";
+    const topic = "{{ topic }}";
+    const maxQ = {{ max_q }};
+    let currentQId = null;
+    let currentMapping =[];
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    function loadQuestion() {
+        document.getElementById('next-btn').style.display = 'none';
+        fetch('/api/get_question', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ session_id: sessionId, subject: subject, topic: topic })
+        }).then(res => res.json()).then(data => {
+            if (data.status === 'finished' || data.progress > maxQ) { finishQuiz(); return; }
+            
+            document.getElementById('q-progress').innerText = `ข้อที่ ${data.progress}/${maxQ}`;
+            document.getElementById('question-text').innerText = data.text;
+            document.getElementById('diff-display').innerText = data.difficulty;
+            
+            // แสดงรูปภาพถ้ามี
+            const imgContainer = document.getElementById('image-container');
+            if(data.image_filename) {
+                imgContainer.innerHTML = `<img src="/static/uploads/${data.image_filename}" class="img-fluid rounded shadow-sm" style="max-height: 300px;">`;
+            } else { imgContainer.innerHTML = ''; }
+
+            currentQId = data.q_id;
+            currentMapping = data.mapping_indices;
+            const choicesDiv = document.getElementById('choices-area');
+            choicesDiv.innerHTML = '';
+            
+            data.choices.forEach((choice, visualIndex) => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-outline-dark text-start py-2 fs-5 choice-btn';
+                btn.innerHTML = choice;
+                btn.onclick = () => submitAnswer(visualIndex, btn);
+                choicesDiv.appendChild(btn);
+            });
+            if (window.MathJax) MathJax.typesetPromise();
+        });
+    }
+
+    function submitAnswer(visualIndex, btnElement) {
+        document.querySelectorAll('.choice-btn').forEach(b => b.disabled = true);
+        fetch('/api/submit_answer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ session_id: sessionId, q_id: currentQId, choice_idx: currentMapping[visualIndex] })
+        }).then(res => res.json()).then(data => {
+            btnElement.style.backgroundColor = data.correct ? '#198754' : '#dc3545';
+            btnElement.style.color = 'white';
+            document.getElementById('next-btn').style.display = 'inline-block';
+        });
+    }
+
+    function finishQuiz() {
+        fetch('/api/finish_session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ session_id: sessionId })
+        }).then(res => res.json()).then(data => {
+            document.getElementById('quiz-container').style.display = 'none';
+            document.getElementById('result-container').style.display = 'block';
+            document.getElementById('final-score').innerText = data.avg_score.toFixed(2);
+        });
+    }
+    loadQuestion();
+</script>
+{% endblock %}

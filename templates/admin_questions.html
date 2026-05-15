@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>วิชา <span class="text-secondary">{{ subject }}</span> / หัวข้อ <span class="text-primary">{{ topic }}</span></h3>
+        <a href="/admin" class="btn btn-secondary">กลับ Dashboard</a>
+    </div>
+
+    <table class="table table-bordered table-hover">
+        <thead class="table-light">
+            <tr><th width="5%">ID</th><th width="35%">โจทย์</th><th width="20%">รูปภาพ (Images)</th><th width="25%">ตัวเลือก</th><th width="15%">จัดการรูป</th></tr>
+        </thead>
+        <tbody>
+            {% for q in questions %}
+            <tr>
+                <td>{{ q.id }}</td>
+                <td>{{ q.question_text }}</td>
+                <td class="text-center" id="img-cell-{{ q.id }}">
+                    {% if q.image_filename %}
+                        <img src="/static/uploads/{{ q.image_filename }}" class="img-fluid" style="max-height: 100px;">
+                    {% else %} <span class="text-muted small">ไม่มีรูป</span> {% endif %}
+                </td>
+                <td><ul class="mb-0 ps-3">{% for c in q.choices %}<li>{{ c }}</li>{% endfor %}</ul></td>
+                <td>
+                    <input type="file" id="file-{{ q.id }}" class="form-control form-control-sm mb-1" accept=".png,.jpg,.jpeg,.svg">
+                    <button class="btn btn-sm btn-outline-primary w-100" onclick="uploadImg({{ q.id }})">อัปโหลด</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+function uploadImg(id) {
+    const file = document.getElementById('file-' + id).files[0];
+    if(!file) { alert('เลือกไฟล์ก่อนครับ'); return; }
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    fetch('/api/admin/upload_image/' + id, {
+        method: 'POST', headers: { 'X-CSRFToken': csrfToken }, body: formData
+    }).then(res => res.json()).then(data => {
+        if(data.status === 'ok') {
+            document.getElementById('img-cell-' + id).innerHTML = `<img src="/static/uploads/${data.filename}" class="img-fluid" style="max-height: 100px;">`;
+            alert('อัปโหลดเสร็จสิ้น');
+        } else alert(data.message);
+    });
+}
+</script>
+{% endblock %}

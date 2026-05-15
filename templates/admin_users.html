@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h3>จัดการบัญชีนักศึกษา</h3>
+    <table class="table table-hover align-middle mb-5">
+        <thead class="table-dark"><tr><th>ID</th><th>Username</th><th>Student ID</th><th class="text-end">Actions</th></tr></thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>{{ u.id }}</td><td>{{ u.username }}</td><td>{{ u.student_id }}</td>
+                <td class="text-end"><button class="btn btn-sm btn-danger" onclick="resetPassword({{ u.id }})">Reset Password</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if current_user.is_super_admin %}
+    <h3 class="mt-4 text-primary">ระบบ Super Admin: จัดการสิทธิ์ผู้สอน</h3>
+    <div class="card p-3 mb-4">
+        <div class="row">
+            <div class="col-md-4"><input type="text" id="adminUser" class="form-control" placeholder="Username (ใหม่/เก่า)"></div>
+            <div class="col-md-5"><input type="text" id="adminSubj" class="form-control" placeholder="วิชาที่อนุญาต (คั่นด้วยคอมม่า) เว้นว่าง=ทั้งหมด"></div>
+            <div class="col-md-3"><button class="btn btn-primary w-100" onclick="manageAdmin()">บันทึกแอดมิน</button></div>
+        </div>
+    </div>
+    
+    <table class="table table-bordered bg-white">
+        <thead class="table-primary"><tr><th>Admin Name</th><th>วิชาที่ดูแลได้ (Tags)</th></tr></thead>
+        <tbody>
+            {% for a in admins %}
+            <tr><td>{{ a.username }} {{ '(Super Admin)' if a.is_super_admin else '' }}</td><td>{{ a.allowed_subjects|join(', ') if a.allowed_subjects else 'All Subjects' }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
+<script>
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    function resetPassword(id) {
+        fetch('/api/admin/reset_password', { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({user_id:id}) })
+        .then(res=>res.json()).then(data=> { alert(`รหัสผ่านใหม่: ${data.new_password}`); });
+    }
+    
+    function manageAdmin() {
+        const user = document.getElementById('adminUser').value;
+        const subjStr = document.getElementById('adminSubj').value;
+        const subjects = subjStr ? subjStr.split(',').map(s => s.trim()) : null;
+        
+        fetch('/api/super/manage_admin', { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({username:user, subjects:subjects}) })
+        .then(res=>res.json()).then(data=> location.reload());
+    }
+</script>
+{% endblock %}
