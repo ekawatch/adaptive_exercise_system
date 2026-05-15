@@ -11,6 +11,7 @@
     </div>
     
     <div class="row">
+        <!-- Panel 1: Import JSON -->
         <div class="col-md-4 mb-3">
             <div class="card border-primary h-100">
                 <div class="card-header bg-primary text-white">1. Import โจทย์ (JSON)</div>
@@ -24,6 +25,7 @@
             </div>
         </div>
 
+        <!-- Panel 2: ตรวจสอบคลังข้อสอบ -->
         <div class="col-md-4 mb-3">
             <div class="card border-info h-100">
                 <div class="card-header bg-info text-white">2. ตรวจสอบคลังข้อสอบ</div>
@@ -43,17 +45,24 @@
             </div>
         </div>
 
+        <!-- Panel 3: Export Database -->
         <div class="col-md-4 mb-3">
             <div class="card border-success h-100">
                 <div class="card-header bg-success text-white">3. Export Database</div>
                 <div class="card-body d-grid gap-2">
+                    <!-- ปุ่มสำหรับ Export สถิตินักเรียน -->
+                    <a href="/admin/export/sessions" class="btn btn-outline-success">Export การเข้าทำ (Excel)</a>
+                    <a href="/admin/export/transactions" class="btn btn-outline-success">Export การตอบรายข้อ (Excel)</a>
+                    
+                    <!-- ปุ่มสำหรับ Backup ระบบ (เฉพาะ Super Admin) -->
                     {% if current_user.is_super_admin %}
-                    <a href="/admin/backup" class="btn btn-success fw-bold">Backup โจทย์ทั้งหมด (JSON)</a>
+                    <a href="/admin/backup" class="btn btn-success fw-bold mt-2">Backup โจทย์ทั้งหมด (JSON)</a>
                     {% endif %}
                 </div>
             </div>
         </div>
 
+        <!-- Panel 4: จัดการโครงสร้าง (ซ่อน/แสดง/ย้ายวิชา) -->
         <div class="col-12 mt-3">
             <div class="card shadow-sm">
                 <div class="card-header bg-secondary text-white">4. จัดการโครงสร้าง และการมองเห็น (Visibility)</div>
@@ -81,7 +90,6 @@
                                     <button class="btn btn-sm btn-outline-dark me-1" onclick="toggleTopic('{{ item.subject }}', '{{ item.topic }}', {{ loop.index }})">
                                         เปิด/ปิด
                                     </button>
-                                    <!-- ปุ่มสำหรับย้ายรายวิชา -->
                                     <button class="btn btn-sm btn-outline-primary" onclick="moveTopic('{{ item.subject }}', '{{ item.topic }}')">
                                         ย้ายวิชา
                                     </button>
@@ -97,15 +105,19 @@
 </div>
 
 <script>
+    // ดึง CSRF Token เพื่อใช้กับการส่งข้อมูลแบบ POST (ป้องกันความปลอดภัย)
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const topicsStatus = {{ topics_status|tojson }};
     
-    // Setup View Selector
+    // ตั้งค่าตัวเลือกวิชาในกล่องตรวจสอบคลังข้อสอบ
     const vSubj = document.getElementById('viewSubj');
     const vTopic = document.getElementById('viewTopic');
+    
+    // กรองชื่อวิชาที่ไม่ซ้ำกัน
     const subjSet = [...new Set(topicsStatus.map(t => t.subject))];
     subjSet.forEach(s => vSubj.innerHTML += `<option value="${s}">${s}</option>`);
 
+    // ฟังก์ชันอัปเดตช่องเลือก Topic เมื่อเปลี่ยนวิชา
     function updateViewTopics() {
         vTopic.innerHTML = '';
         topicsStatus.filter(t => t.subject === vSubj.value).forEach(t => {
@@ -113,6 +125,7 @@
         });
     }
 
+    // ฟังก์ชันสำหรับเปิด/ปิด การมองเห็นของ Topic
     function toggleTopic(subj, topic, idx) {
         fetch('/api/admin/toggle_topic', {
             method: 'POST',
@@ -127,7 +140,7 @@
         });
     }
 
-    // ฟังก์ชันใหม่สำหรับการเรียก API ย้ายวิชา
+    // ฟังก์ชันสำหรับย้าย Topic ข้ามวิชา
     function moveTopic(oldSubject, topic) {
         const newSubject = prompt(`คุณกำลังจะย้ายหัวข้อ "${topic}"\nจากวิชาเดิม: "${oldSubject}"\n\nกรุณาพิมพ์ชื่อ "วิชาใหม่" ที่ต้องการย้ายไป:`);
         
@@ -148,7 +161,7 @@
                 .then(data => {
                     if(data.status === 'ok') {
                         alert(data.message);
-                        location.reload(); // รีเฟรชหน้าเพื่อแสดงข้อมูลอัปเดต
+                        location.reload(); // รีเฟรชหน้าเพื่ออัปเดตข้อมูลใหม่ในตาราง
                     } else {
                         alert('เกิดข้อผิดพลาด: ' + data.message);
                     }

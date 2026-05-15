@@ -19,9 +19,6 @@ from models import db, User, Question, ExerciseSession, AnswerTransaction, Topic
 
 app = Flask(__name__)
 
-# ==========================================
-# Database Connection Fix สำหรับ Render.com
-# ==========================================
 db_url = os.environ.get('DATABASE_URL', 'postgresql://localhost/mathdb')
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
@@ -30,7 +27,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'd16aae0acc60c55a8886fc6e9c6b04f5') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Config สำหรับการอัปโหลดรูป
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'svg'}
@@ -43,12 +39,7 @@ if os.environ.get('RENDER'):
     app.config['REMEMBER_COOKIE_SECURE'] = True
     app.config['SESSION_COOKIE_HTTPONLY'] = True
 
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    "pool_pre_ping": True,  
-    "pool_recycle": 300,    
-    "pool_size": 10,
-    "max_overflow": 20
-}
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True, "pool_recycle": 300, "pool_size": 10, "max_overflow": 20}
 
 db.init_app(app)
 csrf = CSRFProtect(app) 
@@ -116,7 +107,6 @@ def get_hidden_topics():
     return {(h.subject, h.topic) for h in hidden}
 
 with app.app_context():
-    # db.drop_all() # ปลดคอมเมนต์บรรทัดนี้ชั่วคราว ถ้ารันครั้งแรกแล้ว DB ของเก่าโครงสร้างไม่ตรง
     db.create_all()
     create_initial_admin()
 
@@ -193,7 +183,6 @@ def profile():
 @admin_required
 def admin_dashboard():
     upload_form = UploadForm()
-    
     if upload_form.validate_on_submit():
         file = upload_form.file.data
         if file:
@@ -202,18 +191,12 @@ def admin_dashboard():
                 for item in data:
                     subj = item.get('subject', 'General')
                     top = item['topic']
-                    
                     if not current_user.is_super_admin and current_user.allowed_subjects:
                         if subj not in current_user.allowed_subjects: continue
                     
-                    q = Question(
-                        subject=subj, topic=top, question_text=item['question'],
-                        choices=item['choices'], correct_idx=item['correctAnswerIndex'], difficulty=item['difficulty']
-                    )
+                    q = Question(subject=subj, topic=top, question_text=item['question'], choices=item['choices'], correct_idx=item['correctAnswerIndex'], difficulty=item['difficulty'])
                     db.session.add(q)
-                    
-                    setting = TopicSetting.query.filter_by(subject=subj, topic=top).first()
-                    if not setting:
+                    if not TopicSetting.query.filter_by(subject=subj, topic=top).first():
                         db.session.add(TopicSetting(subject=subj, topic=top, is_hidden=True))
                         
                 db.session.commit()
@@ -225,19 +208,11 @@ def admin_dashboard():
         all_topics_query = db.session.query(Question.subject, Question.topic).distinct().all()
     else:
         allowed = current_user.allowed_subjects or []
-        all_topics_query = db.session.query(Question.subject, Question.topic)\
-            .filter(Question.subject.in_(allowed)).distinct().all()
+        all_topics_query = db.session.query(Question.subject, Question.topic).filter(Question.subject.in_(allowed)).distinct().all()
 
     settings = TopicSetting.query.all()
     hidden_map = {(s.subject, s.topic): s.is_hidden for s in settings}
-    
-    topics_status = []
-    for subj, top in all_topics_query:
-        topics_status.append({
-            'subject': subj,
-            'topic': top,
-            'is_hidden': hidden_map.get((subj, top), True)
-        })
+    topics_status = [{'subject': subj, 'topic': top, 'is_hidden': hidden_map.get((subj, top), True)} for subj, top in all_topics_query]
     
     return render_template('admin.html', upload_form=upload_form, topics_status=topics_status)
 
@@ -254,7 +229,6 @@ def admin_reset_password():
     data = request.json
     user = User.query.get(data.get('user_id'))
     if not user: return jsonify({'status': 'error', 'message': 'User not found'}), 404
-    
     new_raw_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))
     user.password = generate_password_hash(new_raw_password, method='scrypt')
     db.session.commit()
@@ -264,9 +238,7 @@ def admin_reset_password():
 @super_admin_required
 def manage_admin():
     data = request.json
-    username = data.get('username')
-    subjects = data.get('subjects')
-    
+    username, subjects = data.get('username'), data.get('subjects')
     user = User.query.filter_by(username=username).first()
     if not user:
         hashed_pw = generate_password_hash('password1234', method='scrypt')
@@ -292,48 +264,27 @@ def admin_toggle_topic():
     db.session.commit()
     return jsonify({'status': 'ok', 'is_hidden': setting.is_hidden})
 
-# API: สำหรับการย้ายรายวิชา
 @app.route('/api/admin/move_topic', methods=['POST'])
 @admin_required
 def admin_move_topic():
     data = request.json
-    old_subject = data.get('old_subject')
-    topic = data.get('topic')
-    new_subject = data.get('new_subject')
-
-    if not old_subject or not topic or not new_subject:
-        return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ครบถ้วน'}), 400
-
-    # ตรวจสอบสิทธิ์
+    old_subject, topic, new_subject = data.get('old_subject'), data.get('topic'), data.get('new_subject')
+    if not old_subject or not topic or not new_subject: return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ครบถ้วน'}), 400
     if not current_user.is_super_admin:
         allowed = current_user.allowed_subjects or []
         if old_subject not in allowed or new_subject not in allowed:
             return jsonify({'status': 'error', 'message': 'ไม่มีสิทธิ์จัดการหรือย้ายไปยังวิชาดังกล่าว'}), 403
-
     try:
-        # 1. ย้าย Question
-        questions = Question.query.filter_by(subject=old_subject, topic=topic).all()
-        for q in questions:
-            q.subject = new_subject
-
-        # 2. ย้าย TopicSetting
+        for q in Question.query.filter_by(subject=old_subject, topic=topic).all(): q.subject = new_subject
         existing_setting = TopicSetting.query.filter_by(subject=new_subject, topic=topic).first()
         old_setting = TopicSetting.query.filter_by(subject=old_subject, topic=topic).first()
-        
         if existing_setting:
-            if old_setting:
-                db.session.delete(old_setting) # ลบตัวเก่าทิ้งเพื่อป้องกันการซ้ำ
-        else:
-            if old_setting:
-                old_setting.subject = new_subject # เปลี่ยนชื่อวิชาดื้อๆเลย
-
-        # 3. ย้ายประวัติ ExerciseSessions
-        sessions = ExerciseSession.query.filter_by(subject=old_subject, topic=topic).all()
-        for s in sessions:
-            s.subject = new_subject
-
+            if old_setting: db.session.delete(old_setting)
+        elif old_setting:
+            old_setting.subject = new_subject
+        for s in ExerciseSession.query.filter_by(subject=old_subject, topic=topic).all(): s.subject = new_subject
         db.session.commit()
-        return jsonify({'status': 'ok', 'message': f'ย้ายหัวข้อ "{topic}" ไปยังวิชา "{new_subject}" สำเร็จแล้ว'})
+        return jsonify({'status': 'ok', 'message': f'ย้ายสำเร็จแล้ว'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -359,6 +310,78 @@ def upload_image(q_id):
         return jsonify({'status': 'ok', 'filename': filename})
     return jsonify({'status': 'error', 'message': 'Invalid file type'}), 400
 
+# =============== ADMIN EXPORT ROUTES =============== #
+
+@app.route('/admin/export/sessions')
+@admin_required
+def export_sessions():
+    results = db.session.query(ExerciseSession, User)\
+        .join(User, ExerciseSession.user_id == User.id)\
+        .filter(User.is_admin == False)\
+        .order_by(ExerciseSession.created_at.desc()).all()
+    
+    data = []
+    for sess, user in results:
+        data.append({
+            'Session ID': sess.id,
+            'Username': user.username,
+            'Student ID': user.student_id,
+            'Subject': sess.subject,
+            'Topic': sess.topic,
+            'Avg Score': round(sess.total_score_avg, 2),
+            'Time': sess.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    
+    df = pd.DataFrame(data)
+    output = BytesIO()
+    if not df.empty:
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Sessions')
+    else:
+        df = pd.DataFrame(columns=['Session ID', 'Username', 'Student ID', 'Subject', 'Topic', 'Avg Score', 'Time'])
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Sessions')
+
+    output.seek(0)
+    return send_file(output, download_name="student_sessions.xlsx", as_attachment=True)
+
+@app.route('/admin/export/transactions')
+@admin_required
+def export_transactions():
+    results = db.session.query(AnswerTransaction, ExerciseSession, User, Question)\
+        .join(ExerciseSession, AnswerTransaction.session_id == ExerciseSession.id)\
+        .join(User, ExerciseSession.user_id == User.id)\
+        .join(Question, AnswerTransaction.question_id == Question.id)\
+        .filter(User.is_admin == False)\
+        .order_by(AnswerTransaction.timestamp.desc()).all()
+    
+    data = []
+    for trans, sess, user, quest in results:
+        data.append({
+            'Trans ID': trans.id,
+            'Username': user.username,
+            'Student ID': user.student_id,
+            'Subject': sess.subject,
+            'Topic': sess.topic,
+            'Question ID': trans.question_id,
+            'Difficulty': trans.difficulty,
+            'Is Correct': 'Correct' if trans.is_correct else 'Wrong',
+            'Time': trans.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        })
+        
+    df = pd.DataFrame(data)
+    output = BytesIO()
+    if not df.empty:
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Transactions')
+    else:
+        df = pd.DataFrame(columns=['Trans ID', 'Username', 'Student ID', 'Subject', 'Topic', 'Question ID', 'Difficulty', 'Is Correct', 'Time'])
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Transactions')
+            
+    output.seek(0)
+    return send_file(output, download_name="student_transactions.xlsx", as_attachment=True)
+
 @app.route('/admin/backup')
 @super_admin_required
 def backup_database():
@@ -376,20 +399,12 @@ def backup_database():
 @app.route('/admin/stats')
 @admin_required
 def admin_stats():
-    most_active = db.session.query(User.username, User.student_id, func.count(ExerciseSession.id).label('count'))\
-        .join(ExerciseSession, User.id == ExerciseSession.user_id)\
-        .filter(User.is_admin == False).group_by(User.id).order_by(db.desc('count')).limit(10).all()
-        
+    most_active = db.session.query(User.username, User.student_id, func.count(ExerciseSession.id).label('count')).join(ExerciseSession, User.id == ExerciseSession.user_id).filter(User.is_admin == False).group_by(User.id).order_by(db.desc('count')).limit(10).all()
     subquery = db.session.query(ExerciseSession.user_id).distinct()
     inactive_users = User.query.filter(User.is_admin == False, ~User.id.in_(subquery)).all()
-    
-    user_scores = db.session.query(User.username, User.student_id, func.avg(ExerciseSession.total_score_avg).label('avg'))\
-        .join(ExerciseSession, User.id == ExerciseSession.user_id)\
-        .filter(User.is_admin == False).group_by(User.id).all()
-        
+    user_scores = db.session.query(User.username, User.student_id, func.avg(ExerciseSession.total_score_avg).label('avg')).join(ExerciseSession, User.id == ExerciseSession.user_id).filter(User.is_admin == False).group_by(User.id).all()
     top_scores = sorted(user_scores, key=lambda x: x.avg, reverse=True)[:10]
     risk_scores = sorted([u for u in user_scores if u.avg < 2.5], key=lambda x: x.avg)
-
     return render_template('admin_stats.html', active=most_active, inactive=inactive_users, top=top_scores, risk=risk_scores)
 
 
