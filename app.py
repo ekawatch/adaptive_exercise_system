@@ -211,7 +211,23 @@ def admin_dashboard():
                         choices=item['choices'], correct_idx=item['correctAnswerIndex'], difficulty=item['difficulty']
                     )
                     db.session.add(q)
+                    db.session.flush() # ดันข้อมูลลง DB ชั่วคราวเพื่อรับค่า q.id มาใช้ตั้งชื่อไฟล์
                     
+                    # --- [NEW] ระบบดึงโค้ด SVG จาก JSON มาสร้างเป็นไฟล์ ---
+                    svg_content = item.get('svg')
+                    if svg_content and isinstance(svg_content, str) and svg_content.strip():
+                        # สร้างชื่อไฟล์อัตโนมัติอ้างอิงจาก ID
+                        filename = f"q_{q.id}_auto.svg"
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        
+                        # เขียนโค้ดลงไฟล์
+                        with open(filepath, 'w', encoding='utf-8') as f:
+                            f.write(svg_content)
+                            
+                        # ผูกชื่อไฟล์ภาพกับตัวข้อสอบ
+                        q.image_filename = filename
+                    # ----------------------------------------------------
+
                     setting = TopicSetting.query.filter_by(subject=subj, topic=top).first()
                     if not setting:
                         db.session.add(TopicSetting(subject=subj, topic=top, is_hidden=True))
@@ -219,6 +235,7 @@ def admin_dashboard():
                 db.session.commit()
                 flash('Import ข้อมูลเรียบร้อย (ข้อสอบถูกซ่อนเป็นค่าเริ่มต้น)')
             except Exception as e:
+                db.session.rollback()
                 flash(f'เกิดข้อผิดพลาด: {str(e)}')
 
     if current_user.is_super_admin:
@@ -336,9 +353,6 @@ def admin_move_topic():
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-# ==========================================================
-# [NEW API] จัดการข้อสอบทีละหลายข้อ (ลบ, ย้ายวิชา, เปลี่ยนหัวข้อ)
-# ==========================================================
 @app.route('/api/admin/bulk_manage_questions', methods=['POST'])
 @admin_required
 def bulk_manage_questions():
@@ -411,6 +425,7 @@ def upload_image(q_id):
         db.session.commit()
         return jsonify({'status': 'ok', 'filename': filename})
     return jsonify({'status': 'error', 'message': 'Invalid file type'}), 400
+
 
 # =============== ADMIN EXPORT & STATS ROUTES =============== #
 
@@ -488,11 +503,30 @@ def export_transactions():
 @super_admin_required
 def backup_database():
     questions = Question.query.all()
-    backup_data = [{
-        'subject': q.subject, 'topic': q.topic, 'question': q.question_text,
-        'image_filename': q.image_filename, 'choices': q.choices,
-        'correctAnswerIndex': q.correct_idx, 'difficulty': q.difficulty
-    } for q in questions]
+    backup_data = []
+    for q in questions:
+        q_dict = {
+            'subject': q.subject, 
+            'topic': q.topic, 
+            'question': q.question_text,
+            'choices': q.choices,
+            'correctAnswerIndex': q.correct_idx, 
+            'difficulty': q.difficulty
+        }
+        
+        # [Backup Enhancement] ดึงโค้ด SVG กลับมาใส่ JSON ถ้าไฟล์เป็น .svg
+        if q.image_filename and q.image_filename.endswith('.svg'):
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], q.image_filename)
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    q_dict['svg'] = f.read()
+            else:
+                q_dict['image_filename'] = q.image_filename # fallback
+        else:
+            q_dict['image_filename'] = q.image_filename
+            
+        backup_data.append(q_dict)
+
     output = BytesIO()
     output.write(json.dumps(backup_data, ensure_ascii=False, indent=2).encode('utf-8'))
     output.seek(0)
