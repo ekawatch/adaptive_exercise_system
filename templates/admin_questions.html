@@ -6,36 +6,89 @@
         <a href="/admin" class="btn btn-secondary">กลับ Dashboard</a>
     </div>
 
-    <table class="table table-bordered table-hover">
-        <thead class="table-light">
-            <tr><th width="5%">ID</th><th width="35%">โจทย์</th><th width="20%">รูปภาพ (Images)</th><th width="25%">ตัวเลือก</th><th width="15%">จัดการรูป</th></tr>
+    <!-- กล่องเครื่องมือจัดการ (Action Bar) -->
+    <div class="card bg-light mb-3 shadow-sm">
+        <div class="card-body py-2">
+            <div class="row align-items-center">
+                <div class="col-auto fw-bold">จัดการที่เลือก:</div>
+                <div class="col-md-3">
+                    <select id="actionSelect" class="form-select" onchange="toggleActionInput()">
+                        <option value="">-- เลือก Action --</option>
+                        <option value="change_topic">ย้ายไป Topic อื่น</option>
+                        <option value="move_subject">ย้ายไป วิชา (Subject) อื่น</option>
+                        <option value="delete" class="text-danger">ลบข้อสอบ (Delete)</option>
+                    </select>
+                </div>
+                <div class="col-md-4" id="actionInputContainer" style="display: none;">
+                    <input type="text" id="actionNewValue" class="form-control" placeholder="พิมพ์ชื่อเป้าหมายใหม่...">
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary" onclick="executeBulkAction()">ดำเนินการ (Apply)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <table class="table table-bordered table-hover align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th width="5%" class="text-center">
+                    <!-- Checkbox สำหรับ Select All -->
+                    <input class="form-check-input" type="checkbox" id="selectAll" onclick="toggleAll(this)">
+                </th>
+                <th width="5%">ID</th>
+                <th width="35%">โจทย์ (Question)</th>
+                <th width="15%" class="text-center">รูปภาพ (Image)</th>
+                <th width="25%">ตัวเลือก (Choices)</th>
+                <th width="15%">จัดการรูป</th>
+            </tr>
         </thead>
         <tbody>
             {% for q in questions %}
             <tr>
-                <td>{{ q.id }}</td>
+                <td class="text-center">
+                    <input class="form-check-input q-checkbox" type="checkbox" value="{{ q.id }}">
+                </td>
+                <td class="text-center fw-bold">{{ q.id }}</td>
                 <td>{{ q.question_text }}</td>
                 <td class="text-center" id="img-cell-{{ q.id }}">
                     {% if q.image_filename %}
-                        <img src="/static/uploads/{{ q.image_filename }}" class="img-fluid" style="max-height: 100px;">
-                    {% else %} <span class="text-muted small">ไม่มีรูป</span> {% endif %}
+                        <img src="/static/uploads/{{ q.image_filename }}" class="img-fluid rounded" style="max-height: 80px;">
+                    {% else %} 
+                        <span class="text-muted small">ไม่มีรูป</span> 
+                    {% endif %}
                 </td>
-                <td><ul class="mb-0 ps-3">{% for c in q.choices %}<li>{{ c }}</li>{% endfor %}</ul></td>
+                <td>
+                    <ul class="mb-0 ps-3">
+                        {% for c in q.choices %}
+                        <li class="{% if loop.index0 == q.correct_idx %}text-success fw-bold{% endif %}">
+                            {{ c }} {% if loop.index0 == q.correct_idx %} (✓){% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </td>
                 <td>
                     <input type="file" id="file-{{ q.id }}" class="form-control form-control-sm mb-1" accept=".png,.jpg,.jpeg,.svg">
-                    <button class="btn btn-sm btn-outline-primary w-100" onclick="uploadImg({{ q.id }})">อัปโหลด</button>
+                    <button class="btn btn-sm btn-outline-primary w-100" onclick="uploadImg({{ q.id }})">อัปโหลดรูป</button>
                 </td>
             </tr>
             {% endfor %}
+            {% if not questions %}
+            <tr>
+                <td colspan="6" class="text-center text-muted py-4">ไม่พบโจทย์ในหัวข้อนี้</td>
+            </tr>
+            {% endif %}
         </tbody>
     </table>
 </div>
 
 <script>
 const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+// ระบบอัปโหลดรูป (ของเดิม)
 function uploadImg(id) {
     const file = document.getElementById('file-' + id).files[0];
-    if(!file) { alert('เลือกไฟล์ก่อนครับ'); return; }
+    if(!file) { alert('กรุณาเลือกไฟล์ก่อนครับ'); return; }
     
     const formData = new FormData();
     formData.append('image', file);
@@ -44,9 +97,96 @@ function uploadImg(id) {
         method: 'POST', headers: { 'X-CSRFToken': csrfToken }, body: formData
     }).then(res => res.json()).then(data => {
         if(data.status === 'ok') {
-            document.getElementById('img-cell-' + id).innerHTML = `<img src="/static/uploads/${data.filename}" class="img-fluid" style="max-height: 100px;">`;
+            document.getElementById('img-cell-' + id).innerHTML = `<img src="/static/uploads/${data.filename}" class="img-fluid rounded" style="max-height: 80px;">`;
             alert('อัปโหลดเสร็จสิ้น');
         } else alert(data.message);
+    });
+}
+
+// ================= ฟังก์ชันจัดการ Bulk Actions =================
+
+// สลับเปิด/ปิด Checkbox ทั้งหมด
+function toggleAll(source) {
+    const checkboxes = document.querySelectorAll('.q-checkbox');
+    checkboxes.forEach(cb => cb.checked = source.checked);
+}
+
+// ซ่อน/แสดง ช่องพิมพ์ชื่อวิชา/หัวข้อใหม่ เมื่อเลือก Action
+function toggleActionInput() {
+    const action = document.getElementById('actionSelect').value;
+    const inputContainer = document.getElementById('actionInputContainer');
+    const inputField = document.getElementById('actionNewValue');
+    
+    if (action === 'change_topic') {
+        inputContainer.style.display = 'block';
+        inputField.placeholder = "พิมพ์ชื่อ Topic ใหม่...";
+    } else if (action === 'move_subject') {
+        inputContainer.style.display = 'block';
+        inputField.placeholder = "พิมพ์ชื่อ วิชา (Subject) ใหม่...";
+    } else {
+        // กรณีเลือกลบ (delete) ไม่ต้องโชว์ช่องกรอก
+        inputContainer.style.display = 'none';
+        inputField.value = "";
+    }
+}
+
+// ยืนยันและส่งคำสั่งไปจัดการ
+function executeBulkAction() {
+    const action = document.getElementById('actionSelect').value;
+    const newValue = document.getElementById('actionNewValue').value.trim();
+    
+    // ดึง ID ของข้อที่ถูกติ๊ก Checkbox
+    const checkboxes = document.querySelectorAll('.q-checkbox:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    if (selectedIds.length === 0) {
+        alert('กรุณาเลือกข้อสอบ (ติ๊กถูกด้านหน้า) อย่างน้อย 1 ข้อ');
+        return;
+    }
+
+    if (!action) {
+        alert('กรุณาเลือก Action ที่ต้องการ');
+        return;
+    }
+
+    if ((action === 'change_topic' || action === 'move_subject') && newValue === '') {
+        alert('กรุณาระบุชื่อเป้าหมายที่ต้องการย้ายไป');
+        return;
+    }
+
+    // แจ้งเตือนก่อนลบ
+    if (action === 'delete') {
+        if (!confirm(`🚨 คำเตือน!\nคุณต้องการ "ลบ" ข้อสอบจำนวน ${selectedIds.length} ข้อ ใช่หรือไม่?\n\n(การกระทำนี้จะลบประวัติการตอบข้อนี้ของนักเรียนทิ้งไปด้วย กราฟนักเรียนอาจมีการเปลี่ยนแปลง)`)) {
+            return;
+        }
+    } else {
+        if (!confirm(`คุณต้องการเปลี่ยนข้อมูลข้อสอบจำนวน ${selectedIds.length} ข้อ ใช่หรือไม่?`)) {
+            return;
+        }
+    }
+
+    // ยิง API ไปที่ Backend
+    fetch('/api/admin/bulk_manage_questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({
+            action: action,
+            question_ids: selectedIds,
+            new_value: newValue
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert(data.message);
+            location.reload(); // รีเฟรชหน้าเพื่อแสดงผลใหม่
+        } else {
+            alert('เกิดข้อผิดพลาด: ' + data.message);
+        }
+    })
+    .catch(err => {
+        alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+        console.error(err);
     });
 }
 </script>
