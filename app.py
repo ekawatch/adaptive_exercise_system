@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import base64
 import pandas as pd
 import secrets 
 import string  
@@ -14,7 +15,7 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import StringField, PasswordField, IntegerField, FileField
 from wtforms.validators import DataRequired, Length, EqualTo, ValidationError
-from sqlalchemy import func 
+from sqlalchemy import func, text 
 from models import db, User, Question, ExerciseSession, AnswerTransaction, TopicSetting 
 
 app = Flask(__name__)
@@ -30,7 +31,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'd16aae0acc60c55a8886fc6e9c6b04f5') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Config สำหรับการอัปโหลดรูป
+# Config สำหรับการอัปโหลดรูป (เผื่อเหลือเผื่อขาด ยังเก็บไว้)
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'svg'}
@@ -115,8 +116,19 @@ def get_hidden_topics():
     hidden = TopicSetting.query.filter_by(is_hidden=True).all()
     return {(h.subject, h.topic) for h in hidden}
 
+# ==========================================
+# ดำเนินการอัปเดตโครงสร้าง Database อัตโนมัติ
+# ==========================================
 with app.app_context():
     db.create_all()
+    try:
+        # บังคับสร้างคอลัมน์ image_data (ถ้ามีอยู่แล้ว มันจะเข้า except และข้ามไปเงียบๆ)
+        db.session.execute(text("ALTER TABLE questions ADD COLUMN image_data TEXT;"))
+        db.session.commit()
+        print("เพิ่มคอลัมน์ image_data สำเร็จ!")
+    except Exception:
+        db.session.rollback()
+
     create_initial_admin()
 
 @login_manager.user_loader
@@ -211,18 +223,16 @@ def admin_dashboard():
                         choices=item['choices'], correct_idx=item['correctAnswerIndex'], difficulty=item['difficulty']
                     )
                     db.session.add(q)
-                    db.session.flush() # ดันข้อมูลลง DB ชั่วคราวเพื่อรับค่า q.id มาใช้ตั้งชื่อไฟล์
+                    db.session.flush() 
                     
-                    # --- ระบบดึงโค้ด SVG จาก JSON มาสร้างเป็นไฟล์ ---
+                    # --- แปลง SVG จาก JSON เป็น Base64 เก็บลง Database ---
                     svg_content = item.get('svg')
                     if svg_content and isinstance(svg_content, str) and svg_content.strip():
-                        filename = f"q_{q.id}_auto.svg"
-                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        if 'xmlns=' not in svg_content:
+                            svg_content = svg_content.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"', 1)
                         
-                        with open(filepath, 'w', encoding='utf-8') as f:
-                            f.write(svg_content)
-                            
-                        q.image_filename = filename
+                        base64_svg = base64.b64encode(svg_content.encode('utf-8')).decode('utf-8')
+                        q.image_data = f"data:image/svg+xml;base64,{base64_svg}"
 
                     setting = TopicSetting.query.filter_by(subject=subj, topic=top).first()
                     if not setting:
@@ -392,7 +402,6 @@ def bulk_manage_questions():
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-# API: สำหรับแก้ไขข้อมูลโจทย์ ตัวเลือก ความยาก และเฉลย (Edit Question)
 @app.route('/api/admin/update_question', methods=['POST'])
 @admin_required
 def update_question():
@@ -410,7 +419,6 @@ def update_question():
     if not q:
         return jsonify({'status': 'error', 'message': 'ไม่พบข้อสอบในระบบ'}), 404
 
-    # ตรวจสอบสิทธิ์ว่าแอดมินคนนี้แก้ของวิชานี้ได้ไหม
     if not current_user.is_super_admin:
         allowed = current_user.allowed_subjects or []
         if q.subject not in allowed:
@@ -436,18 +444,26 @@ def view_questions():
     questions = Question.query.filter_by(subject=subj, topic=top).order_by(Question.id).all()
     return render_template('admin_questions.html', subject=subj, topic=top, questions=questions)
 
+# --- ระบบอัปโหลดรูปภาพผ่านเว็บ (แปลงไฟล์เป็น Base64 แล้วเซฟลง DB ทันที) ---
 @app.route('/api/admin/upload_image/<int:q_id>', methods=['POST'])
 @admin_required
 def upload_image(q_id):
     if 'image' not in request.files: return jsonify({'status': 'error', 'message': 'No file part'}), 400
     file = request.files['image']
+    
     if file and allowed_file(file.filename):
-        filename = secure_filename(f"q_{q_id}_{file.filename}")
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        mime_type = 'image/svg+xml' if ext == 'svg' else f'image/{ext}'
+        
+        file_data = file.read()
+        base64_data = base64.b64encode(file_data).decode('utf-8')
+        image_data_uri = f"data:{mime_type};base64,{base64_data}"
+        
         q = Question.query.get(q_id)
-        q.image_filename = filename
+        q.image_data = image_data_uri
         db.session.commit()
-        return jsonify({'status': 'ok', 'filename': filename})
+        return jsonify({'status': 'ok', 'image_data': image_data_uri})
+        
     return jsonify({'status': 'error', 'message': 'Invalid file type'}), 400
 
 
@@ -535,18 +551,9 @@ def backup_database():
             'question': q.question_text,
             'choices': q.choices,
             'correctAnswerIndex': q.correct_idx, 
-            'difficulty': q.difficulty
+            'difficulty': q.difficulty,
+            'image_data': q.image_data # สำรองข้อมูล Base64 ทั้งก้อน
         }
-        if q.image_filename and q.image_filename.endswith('.svg'):
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], q.image_filename)
-            if os.path.exists(filepath):
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    q_dict['svg'] = f.read()
-            else:
-                q_dict['image_filename'] = q.image_filename
-        else:
-            q_dict['image_filename'] = q.image_filename
-            
         backup_data.append(q_dict)
 
     output = BytesIO()
@@ -668,7 +675,7 @@ def get_question():
     
     return jsonify({
         'status': 'ok', 'q_id': selected_q.id, 'text': selected_q.question_text,
-        'image_filename': selected_q.image_filename,
+        'image_data': selected_q.image_data,
         'choices': [item[1] for item in indexed_choices],
         'mapping_indices': [item[0] for item in indexed_choices], 
         'difficulty': selected_q.difficulty, 'progress': done_count + 1
