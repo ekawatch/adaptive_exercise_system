@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container">
+<div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h3>วิชา <span class="text-secondary">{{ subject }}</span> / หัวข้อ <span class="text-primary">{{ topic }}</span></h3>
         <a href="/admin" class="btn btn-secondary">กลับ Dashboard</a>
@@ -29,63 +29,232 @@
         </div>
     </div>
 
-    <table class="table table-bordered table-hover align-middle">
-        <thead class="table-dark">
-            <tr>
-                <th width="5%" class="text-center">
-                    <!-- Checkbox สำหรับ Select All -->
-                    <input class="form-check-input" type="checkbox" id="selectAll" onclick="toggleAll(this)">
-                </th>
-                <th width="5%">ID</th>
-                <th width="35%">โจทย์ (Question)</th>
-                <th width="15%" class="text-center">รูปภาพ (Image)</th>
-                <th width="25%">ตัวเลือก (Choices)</th>
-                <th width="15%">จัดการรูป</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for q in questions %}
-            <tr>
-                <td class="text-center">
-                    <input class="form-check-input q-checkbox" type="checkbox" value="{{ q.id }}">
-                </td>
-                <td class="text-center fw-bold">{{ q.id }}</td>
-                <td>{{ q.question_text }}</td>
-                <td class="text-center" id="img-cell-{{ q.id }}">
-                    {% if q.image_filename %}
-                        <img src="/static/uploads/{{ q.image_filename }}" class="img-fluid rounded" style="max-height: 80px;">
-                    {% else %} 
-                        <span class="text-muted small">ไม่มีรูป</span> 
-                    {% endif %}
-                </td>
-                <td>
-                    <ul class="mb-0 ps-3">
-                        {% for c in q.choices %}
-                        <li class="{% if loop.index0 == q.correct_idx %}text-success fw-bold{% endif %}">
-                            {{ c }} {% if loop.index0 == q.correct_idx %} (✓){% endif %}
-                        </li>
-                        {% endfor %}
-                    </ul>
-                </td>
-                <td>
-                    <input type="file" id="file-{{ q.id }}" class="form-control form-control-sm mb-1" accept=".png,.jpg,.jpeg,.svg">
-                    <button class="btn btn-sm btn-outline-primary w-100" onclick="uploadImg({{ q.id }})">อัปโหลดรูป</button>
-                </td>
-            </tr>
-            {% endfor %}
-            {% if not questions %}
-            <tr>
-                <td colspan="6" class="text-center text-muted py-4">ไม่พบโจทย์ในหัวข้อนี้</td>
-            </tr>
-            {% endif %}
-        </tbody>
-    </table>
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th width="3%" class="text-center">
+                        <input class="form-check-input" type="checkbox" id="selectAll" onclick="toggleAll(this)">
+                    </th>
+                    <th width="5%" class="text-center">ID</th>
+                    <th width="5%" class="text-center">ระดับ<br>(Level)</th>
+                    <th width="30%">โจทย์ (Question)</th>
+                    <th width="15%" class="text-center">รูปภาพ (Image)</th>
+                    <th width="27%">ตัวเลือก (Choices)</th>
+                    <th width="15%" class="text-center">จัดการ (Manage)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for q in questions %}
+                <tr>
+                    <td class="text-center">
+                        <input class="form-check-input q-checkbox" type="checkbox" value="{{ q.id }}">
+                    </td>
+                    <td class="text-center fw-bold">{{ q.id }}</td>
+                    
+                    <!-- แสดงความยาก -->
+                    <td class="text-center">
+                        <span class="badge bg-info text-dark fs-6">{{ q.difficulty }}</span>
+                    </td>
+
+                    <td>
+                        {{ q.question_text }}
+                        <!-- เก็บข้อมูลดิบ (Raw LaTeX) ไว้ให้ JS ดึงไปใช้ตอนแก้ไข -->
+                        <textarea id="raw-q-{{ q.id }}" class="d-none">{{ q.question_text }}</textarea>
+                    </td>
+
+                    <td class="text-center" id="img-cell-{{ q.id }}">
+                        {% if q.image_filename %}
+                            <img src="/static/uploads/{{ q.image_filename }}" class="img-fluid rounded mb-1" style="max-height: 80px;">
+                        {% else %} 
+                            <span class="text-muted small">ไม่มีรูป</span><br>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        <ul class="mb-0 ps-3">
+                            {% for c in q.choices %}
+                            <li class="{% if loop.index0 == q.correct_idx %}text-success fw-bold{% endif %}">
+                                {{ c }} {% if loop.index0 == q.correct_idx %} (✓){% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        <!-- เก็บข้อมูลดิบ Choices -->
+                        <div id="raw-choices-{{ q.id }}" class="d-none">
+                            {% for c in q.choices %}
+                                <textarea class="choice-item">{{ c }}</textarea>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    
+                    <td>
+                        <!-- ปุ่มแก้ไขข้อความและโจทย์ -->
+                        <button class="btn btn-sm btn-warning w-100 mb-2 fw-bold" 
+                                onclick="openEditModal({{ q.id }}, {{ q.correct_idx }}, {{ q.difficulty }})">
+                            ✏️ แก้ไขโจทย์
+                        </button>
+                        
+                        <!-- เปลี่ยนรูป -->
+                        <input type="file" id="file-{{ q.id }}" class="form-control form-control-sm mb-1" accept=".png,.jpg,.jpeg,.svg">
+                        <button class="btn btn-sm btn-outline-primary w-100" onclick="uploadImg({{ q.id }})">อัปโหลดรูป</button>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not questions %}
+                <tr><td colspan="7" class="text-center text-muted py-4">ไม่พบโจทย์ในหัวข้อนี้</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
 </div>
+
+<!-- ================= MODAL สำหรับแก้ไขข้อสอบ ================= -->
+<div class="modal fade" id="editQuestionModal" tabindex="-1" aria-labelledby="editQuestionModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title fw-bold" id="editQuestionModalLabel">✏️ แก้ไขโจทย์ข้อสอบ (ID: <span id="display-qid"></span>)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-qid">
+        
+        <div class="mb-3">
+            <label class="form-label fw-bold">ระดับความยาก (Difficulty 1-5):</label>
+            <select id="edit-diff" class="form-select w-25">
+                <option value="1">1 (ง่ายสุด)</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5 (ยากสุด)</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label fw-bold">โจทย์ (Question Text / LaTeX):</label>
+            <textarea id="edit-qtext" class="form-control" rows="4"></textarea>
+            <small class="text-muted">รองรับการเขียน LaTeX ให้อยู่ในรูปแบบ <code>\( ... \)</code></small>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label fw-bold">ตัวเลือก (ติ๊กถูกหน้าข้อที่เป็นเฉลยที่ถูกต้อง):</label>
+            <!-- JS จะ Generate กล่องข้อความและ Radio Button มาใส่ในนี้ -->
+            <div id="edit-choices-container"></div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <button type="button" class="btn btn-success fw-bold" onclick="saveEditedQuestion()">💾 บันทึกการแก้ไข</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ======================================================= -->
 
 <script>
 const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+let editModalInstance = null; // เก็บ Instance ของ Modal
 
-// ระบบอัปโหลดรูป (ของเดิม)
+// Initialize Modal เมื่อโหลดหน้าเว็บ
+document.addEventListener("DOMContentLoaded", function() {
+    editModalInstance = new bootstrap.Modal(document.getElementById('editQuestionModal'));
+});
+
+// ฟังก์ชันเปิดหน้าต่างแก้ไขข้อสอบ
+function openEditModal(id, correctIdx, diff) {
+    document.getElementById('display-qid').innerText = id;
+    document.getElementById('edit-qid').value = id;
+    document.getElementById('edit-diff').value = diff;
+    
+    // ดึง Raw Text ของโจทย์มาใส่
+    document.getElementById('edit-qtext').value = document.getElementById('raw-q-' + id).value;
+
+    // สร้างกล่อง Edit ของ Choice แต่ละอัน
+    const choicesContainer = document.getElementById('edit-choices-container');
+    choicesContainer.innerHTML = ''; 
+    const rawChoices = document.querySelectorAll('#raw-choices-' + id + ' .choice-item');
+
+    rawChoices.forEach((ta, index) => {
+        const group = document.createElement('div');
+        group.className = 'input-group mb-2';
+
+        // ส่วนที่เป็น Radio Button สำหรับเลือกข้อถูก
+        const radioText = document.createElement('div');
+        radioText.className = 'input-group-text bg-light';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.className = 'form-check-input mt-0';
+        radio.name = 'edit-correct';
+        radio.value = index;
+        if (index === parseInt(correctIdx)) radio.checked = true;
+        radioText.appendChild(radio);
+
+        // ส่วนที่เป็น Textarea สำหรับแก้คำตอบ
+        const input = document.createElement('textarea');
+        input.className = 'form-control edit-choice-input';
+        input.rows = 2;
+        input.value = ta.value;
+
+        group.appendChild(radioText);
+        group.appendChild(input);
+        choicesContainer.appendChild(group);
+    });
+
+    editModalInstance.show();
+}
+
+// ฟังก์ชันบันทึกข้อมูลโจทย์กลับไปที่ฐานข้อมูล
+function saveEditedQuestion() {
+    const qId = document.getElementById('edit-qid').value;
+    const qText = document.getElementById('edit-qtext').value.trim();
+    const diff = document.getElementById('edit-diff').value;
+    
+    // รวบรวมข้อมูล Choice จากกล่องทั้งหมด
+    const choiceInputs = document.querySelectorAll('.edit-choice-input');
+    const newChoices = Array.from(choiceInputs).map(input => input.value.trim());
+
+    // ตรวจสอบว่าเลือกข้อถูกไว้หรือยัง
+    const checkedRadio = document.querySelector('input[name="edit-correct"]:checked');
+    if (!checkedRadio) {
+        alert('กรุณาติ๊กเลือกเฉลยที่ถูกต้องด้วยครับ');
+        return;
+    }
+    const correctIdx = checkedRadio.value;
+
+    if (qText === '' || newChoices.some(c => c === '')) {
+        alert('กรุณากรอกโจทย์และตัวเลือกให้ครบถ้วน');
+        return;
+    }
+
+    // ส่ง API
+    fetch('/api/admin/update_question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({
+            q_id: qId,
+            question_text: qText,
+            choices: newChoices,
+            correct_idx: correctIdx,
+            difficulty: diff
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert(data.message);
+            location.reload(); // รีเฟรชดูข้อมูลใหม่
+        } else {
+            alert('เกิดข้อผิดพลาด: ' + data.message);
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
+    });
+}
+
+// ================= ฟังก์ชันรูปภาพ และ Bulk Action (เหมือนเดิม) =================
 function uploadImg(id) {
     const file = document.getElementById('file-' + id).files[0];
     if(!file) { alert('กรุณาเลือกไฟล์ก่อนครับ'); return; }
@@ -97,97 +266,53 @@ function uploadImg(id) {
         method: 'POST', headers: { 'X-CSRFToken': csrfToken }, body: formData
     }).then(res => res.json()).then(data => {
         if(data.status === 'ok') {
-            document.getElementById('img-cell-' + id).innerHTML = `<img src="/static/uploads/${data.filename}" class="img-fluid rounded" style="max-height: 80px;">`;
+            document.getElementById('img-cell-' + id).innerHTML = `<img src="/static/uploads/${data.filename}" class="img-fluid rounded mb-1" style="max-height: 80px;">`;
             alert('อัปโหลดเสร็จสิ้น');
         } else alert(data.message);
     });
 }
 
-// ================= ฟังก์ชันจัดการ Bulk Actions =================
-
-// สลับเปิด/ปิด Checkbox ทั้งหมด
 function toggleAll(source) {
     const checkboxes = document.querySelectorAll('.q-checkbox');
     checkboxes.forEach(cb => cb.checked = source.checked);
 }
 
-// ซ่อน/แสดง ช่องพิมพ์ชื่อวิชา/หัวข้อใหม่ เมื่อเลือก Action
 function toggleActionInput() {
     const action = document.getElementById('actionSelect').value;
     const inputContainer = document.getElementById('actionInputContainer');
     const inputField = document.getElementById('actionNewValue');
-    
     if (action === 'change_topic') {
-        inputContainer.style.display = 'block';
-        inputField.placeholder = "พิมพ์ชื่อ Topic ใหม่...";
+        inputContainer.style.display = 'block'; inputField.placeholder = "พิมพ์ชื่อ Topic ใหม่...";
     } else if (action === 'move_subject') {
-        inputContainer.style.display = 'block';
-        inputField.placeholder = "พิมพ์ชื่อ วิชา (Subject) ใหม่...";
+        inputContainer.style.display = 'block'; inputField.placeholder = "พิมพ์ชื่อ วิชา (Subject) ใหม่...";
     } else {
-        // กรณีเลือกลบ (delete) ไม่ต้องโชว์ช่องกรอก
-        inputContainer.style.display = 'none';
-        inputField.value = "";
+        inputContainer.style.display = 'none'; inputField.value = "";
     }
 }
 
-// ยืนยันและส่งคำสั่งไปจัดการ
 function executeBulkAction() {
     const action = document.getElementById('actionSelect').value;
     const newValue = document.getElementById('actionNewValue').value.trim();
-    
-    // ดึง ID ของข้อที่ถูกติ๊ก Checkbox
     const checkboxes = document.querySelectorAll('.q-checkbox:checked');
     const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
-    if (selectedIds.length === 0) {
-        alert('กรุณาเลือกข้อสอบ (ติ๊กถูกด้านหน้า) อย่างน้อย 1 ข้อ');
-        return;
-    }
+    if (selectedIds.length === 0) { alert('กรุณาเลือกข้อสอบ (ติ๊กถูกด้านหน้า) อย่างน้อย 1 ข้อ'); return; }
+    if (!action) { alert('กรุณาเลือก Action ที่ต้องการ'); return; }
+    if ((action === 'change_topic' || action === 'move_subject') && newValue === '') { alert('กรุณาระบุชื่อเป้าหมายที่ต้องการย้ายไป'); return; }
 
-    if (!action) {
-        alert('กรุณาเลือก Action ที่ต้องการ');
-        return;
-    }
+    if (action === 'delete' && !confirm(`🚨 คำเตือน!\nคุณต้องการ "ลบ" ข้อสอบจำนวน ${selectedIds.length} ข้อ ใช่หรือไม่?`)) return;
+    if (action !== 'delete' && !confirm(`คุณต้องการเปลี่ยนข้อมูลข้อสอบจำนวน ${selectedIds.length} ข้อ ใช่หรือไม่?`)) return;
 
-    if ((action === 'change_topic' || action === 'move_subject') && newValue === '') {
-        alert('กรุณาระบุชื่อเป้าหมายที่ต้องการย้ายไป');
-        return;
-    }
-
-    // แจ้งเตือนก่อนลบ
-    if (action === 'delete') {
-        if (!confirm(`🚨 คำเตือน!\nคุณต้องการ "ลบ" ข้อสอบจำนวน ${selectedIds.length} ข้อ ใช่หรือไม่?\n\n(การกระทำนี้จะลบประวัติการตอบข้อนี้ของนักเรียนทิ้งไปด้วย กราฟนักเรียนอาจมีการเปลี่ยนแปลง)`)) {
-            return;
-        }
-    } else {
-        if (!confirm(`คุณต้องการเปลี่ยนข้อมูลข้อสอบจำนวน ${selectedIds.length} ข้อ ใช่หรือไม่?`)) {
-            return;
-        }
-    }
-
-    // ยิง API ไปที่ Backend
     fetch('/api/admin/bulk_manage_questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-        body: JSON.stringify({
-            action: action,
-            question_ids: selectedIds,
-            new_value: newValue
-        })
+        body: JSON.stringify({ action: action, question_ids: selectedIds, new_value: newValue })
     })
     .then(res => res.json())
     .then(data => {
-        if (data.status === 'ok') {
-            alert(data.message);
-            location.reload(); // รีเฟรชหน้าเพื่อแสดงผลใหม่
-        } else {
-            alert('เกิดข้อผิดพลาด: ' + data.message);
-        }
-    })
-    .catch(err => {
-        alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
-        console.error(err);
-    });
+        if (data.status === 'ok') { alert(data.message); location.reload(); } 
+        else alert('เกิดข้อผิดพลาด: ' + data.message);
+    }).catch(err => { alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้'); });
 }
 </script>
 {% endblock %}

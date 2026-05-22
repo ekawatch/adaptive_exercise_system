@@ -213,20 +213,16 @@ def admin_dashboard():
                     db.session.add(q)
                     db.session.flush() # ดันข้อมูลลง DB ชั่วคราวเพื่อรับค่า q.id มาใช้ตั้งชื่อไฟล์
                     
-                    # --- [NEW] ระบบดึงโค้ด SVG จาก JSON มาสร้างเป็นไฟล์ ---
+                    # --- ระบบดึงโค้ด SVG จาก JSON มาสร้างเป็นไฟล์ ---
                     svg_content = item.get('svg')
                     if svg_content and isinstance(svg_content, str) and svg_content.strip():
-                        # สร้างชื่อไฟล์อัตโนมัติอ้างอิงจาก ID
                         filename = f"q_{q.id}_auto.svg"
                         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                         
-                        # เขียนโค้ดลงไฟล์
                         with open(filepath, 'w', encoding='utf-8') as f:
                             f.write(svg_content)
                             
-                        # ผูกชื่อไฟล์ภาพกับตัวข้อสอบ
                         q.image_filename = filename
-                    # ----------------------------------------------------
 
                     setting = TopicSetting.query.filter_by(subject=subj, topic=top).first()
                     if not setting:
@@ -326,12 +322,10 @@ def admin_move_topic():
             return jsonify({'status': 'error', 'message': 'ไม่มีสิทธิ์จัดการหรือย้ายไปยังวิชาดังกล่าว'}), 403
 
     try:
-        # ย้าย Question
         questions = Question.query.filter_by(subject=old_subject, topic=topic).all()
         for q in questions:
             q.subject = new_subject
 
-        # ย้าย TopicSetting
         existing_setting = TopicSetting.query.filter_by(subject=new_subject, topic=topic).first()
         old_setting = TopicSetting.query.filter_by(subject=old_subject, topic=topic).first()
         
@@ -342,7 +336,6 @@ def admin_move_topic():
             if old_setting:
                 old_setting.subject = new_subject 
 
-        # ย้ายประวัติ ExerciseSessions
         sessions = ExerciseSession.query.filter_by(subject=old_subject, topic=topic).all()
         for s in sessions:
             s.subject = new_subject
@@ -366,7 +359,6 @@ def bulk_manage_questions():
 
     questions = Question.query.filter(Question.id.in_(q_ids)).all()
 
-    # ตรวจสอบสิทธิ์ 
     if not current_user.is_super_admin:
         allowed = current_user.allowed_subjects or []
         for q in questions:
@@ -377,18 +369,14 @@ def bulk_manage_questions():
 
     try:
         if action == 'delete':
-            # ลบประวัติ Transaction ที่ผูกกับโจทย์นี้ทิ้งก่อนกันติด Foreign Key
             AnswerTransaction.query.filter(AnswerTransaction.question_id.in_(q_ids)).delete(synchronize_session=False)
-            # ลบโจทย์
             Question.query.filter(Question.id.in_(q_ids)).delete(synchronize_session=False)
-
         elif action == 'move_subject':
             if not new_value: return jsonify({'status': 'error', 'message': 'กรุณาระบุชื่อวิชาใหม่'}), 400
             for q in questions:
                 q.subject = new_value
                 if not TopicSetting.query.filter_by(subject=new_value, topic=q.topic).first():
                     db.session.add(TopicSetting(subject=new_value, topic=q.topic, is_hidden=True))
-
         elif action == 'change_topic':
             if not new_value: return jsonify({'status': 'error', 'message': 'กรุณาระบุชื่อหัวข้อใหม่'}), 400
             for q in questions:
@@ -400,6 +388,42 @@ def bulk_manage_questions():
 
         db.session.commit()
         return jsonify({'status': 'ok', 'message': 'ดำเนินการเสร็จสิ้นเรียบร้อย'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# API: สำหรับแก้ไขข้อมูลโจทย์ ตัวเลือก ความยาก และเฉลย (Edit Question)
+@app.route('/api/admin/update_question', methods=['POST'])
+@admin_required
+def update_question():
+    data = request.json
+    q_id = data.get('q_id')
+    question_text = data.get('question_text', '').strip()
+    choices = data.get('choices', [])
+    correct_idx = data.get('correct_idx')
+    difficulty = data.get('difficulty')
+
+    if not q_id or not question_text or not choices or correct_idx is None or difficulty is None:
+        return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ครบถ้วน'}), 400
+
+    q = Question.query.get(q_id)
+    if not q:
+        return jsonify({'status': 'error', 'message': 'ไม่พบข้อสอบในระบบ'}), 404
+
+    # ตรวจสอบสิทธิ์ว่าแอดมินคนนี้แก้ของวิชานี้ได้ไหม
+    if not current_user.is_super_admin:
+        allowed = current_user.allowed_subjects or []
+        if q.subject not in allowed:
+            return jsonify({'status': 'error', 'message': 'ไม่มีสิทธิ์แก้ไขข้อสอบวิชานี้'}), 403
+
+    try:
+        q.question_text = question_text
+        q.choices = choices
+        q.correct_idx = int(correct_idx)
+        q.difficulty = int(difficulty)
+        
+        db.session.commit()
+        return jsonify({'status': 'ok', 'message': 'บันทึกการแก้ไขเรียบร้อยแล้ว'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -513,15 +537,13 @@ def backup_database():
             'correctAnswerIndex': q.correct_idx, 
             'difficulty': q.difficulty
         }
-        
-        # [Backup Enhancement] ดึงโค้ด SVG กลับมาใส่ JSON ถ้าไฟล์เป็น .svg
         if q.image_filename and q.image_filename.endswith('.svg'):
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], q.image_filename)
             if os.path.exists(filepath):
                 with open(filepath, 'r', encoding='utf-8') as f:
                     q_dict['svg'] = f.read()
             else:
-                q_dict['image_filename'] = q.image_filename # fallback
+                q_dict['image_filename'] = q.image_filename
         else:
             q_dict['image_filename'] = q.image_filename
             
