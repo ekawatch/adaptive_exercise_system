@@ -5,34 +5,35 @@
         {% if challenge %}
         <div class="card shadow border-warning mb-4" style="background: linear-gradient(to right, #fff3cd, #ffffff);">
             <div class="card-body text-center">
-                <h5 class="card-title text-warning fw-bold">🔥 Daily Challenge 🔥</h5>
+                <h5 class="card-title text-warning fw-bold" data-th="🔥 ภารกิจประจำวัน 🔥" data-en="🔥 Daily Challenge 🔥">🔥 ภารกิจประจำวัน 🔥</h5>
+                <p class="card-text" data-th="บทเรียนแนะนำสำหรับคุณวันนี้:" data-en="Recommended topic for today:">บทเรียนแนะนำสำหรับคุณวันนี้:</p>
                 <h4 class="fw-bold text-dark">[{{ challenge[0] }}] <br>{{ challenge[1] }}</h4>
-                <a href="/quiz/{{ challenge[0] }}/{{ challenge[1] }}?num=15" class="btn btn-warning text-dark fw-bold mt-2">ลุยเลย (15 ข้อ) &raquo;</a>
+                <a href="/quiz/{{ challenge[0] }}/{{ challenge[1] }}?num=15" class="btn btn-warning text-dark fw-bold mt-2" data-th="ลุยเลย (15 ข้อ) &raquo;" data-en="Start Now (15 Qs) &raquo;">ลุยเลย (15 ข้อ) &raquo;</a>
             </div>
         </div>
         {% endif %}
 
         <div class="card shadow-sm sticky-top" style="top: 20px; z-index: 1;">
-            <div class="card-header bg-primary text-white"><h4 class="mb-0">โหมดเลือกเอง</h4></div>
+            <div class="card-header bg-primary text-white"><h4 class="mb-0" data-th="โหมดเลือกเอง" data-en="Custom Mode">โหมดเลือกเอง</h4></div>
             <div class="card-body">
                 <form action="#" id="startForm">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">เลือกวิชา (Subject)</label>
+                        <label class="form-label fw-bold" data-th="เลือกวิชา (Subject)" data-en="Select Subject">เลือกวิชา (Subject)</label>
                         <select id="subjectSelect" class="form-select" onchange="updateTopics()">
-                            <option value="">-- เลือกวิชา --</option>
+                            <option value="" data-th="-- เลือกวิชา --" data-en="-- Select Subject --">-- เลือกวิชา --</option>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">เลือกบทเรียน (Topic)</label>
+                        <label class="form-label fw-bold" data-th="เลือกบทเรียน (Topic)" data-en="Select Topic">เลือกบทเรียน (Topic)</label>
                         <select id="topicSelect" class="form-select">
-                            <option value="">-- กรุณาเลือกวิชาก่อน --</option>
+                            <option value="" data-th="-- กรุณาเลือกวิชาก่อน --" data-en="-- Please select subject --">-- กรุณาเลือกวิชาก่อน --</option>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">จำนวนข้อ</label>
+                        <label class="form-label fw-bold" data-th="จำนวนข้อ" data-en="Number of Questions">จำนวนข้อ</label>
                         <input type="number" id="numQuestions" class="form-control" value="15" min="5" max="50">
                     </div>
-                    <button type="button" class="btn btn-primary w-100" onclick="startQuiz()">เริ่มทดสอบ</button>
+                    <button type="button" class="btn btn-primary w-100" onclick="startQuiz()" data-th="เริ่มทดสอบ" data-en="Start Quiz">เริ่มทดสอบ</button>
                 </form>
             </div>
         </div>
@@ -40,18 +41,20 @@
 
     <div class="col-md-7">
         <div class="card shadow-sm mb-4">
-            <div class="card-header bg-dark text-white"><h5 class="mb-0">ภาพรวมความสามารถ</h5></div>
+            <div class="card-header bg-dark text-white"><h5 class="mb-0" data-th="ภาพรวมความสามารถ (3 ครั้งล่าสุด)" data-en="Performance Overview (Last 3)">ภาพรวมความสามารถ (3 ครั้งล่าสุด)</h5></div>
             <div class="card-body"><canvas id="summaryChart" height="150"></canvas></div>
         </div>
-        <h3 class="mb-3">ประวัติรายหัวข้อ</h3>
+        <h3 class="mb-3" data-th="ประวัติรายหัวข้อ" data-en="Topic History">ประวัติรายหัวข้อ</h3>
         {% for graph in graphs_data %}
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-light d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 text-primary fw-bold">{{ graph.topic }}</h5>
-                <span class="badge bg-secondary">ทำไปแล้ว {{ graph.count }} ครั้ง</span>
+                <span class="badge bg-secondary"><span data-th="ทำไปแล้ว" data-en="Attempted">ทำไปแล้ว</span> {{ graph.count }} <span data-th="ครั้ง" data-en="times">ครั้ง</span></span>
             </div>
             <div class="card-body"><canvas id="chart-{{ loop.index0 }}"></canvas></div>
         </div>
+        {% else %}
+        <div class="alert alert-info" data-th="ยังไม่มีประวัติการทำแบบฝึกหัด" data-en="No exercise history yet.">ยังไม่มีประวัติการทำแบบฝึกหัด</div>
         {% endfor %}
     </div>
 </div>
@@ -61,7 +64,6 @@ const dataDict = {{ subject_topics|tojson }};
 const subjectSelect = document.getElementById('subjectSelect');
 const topicSelect = document.getElementById('topicSelect');
 
-// Populate Subjects
 for(let subj in dataDict) {
     subjectSelect.innerHTML += `<option value="${subj}">${subj}</option>`;
 }
@@ -72,7 +74,7 @@ function updateTopics() {
     if(subj && dataDict[subj]) {
         dataDict[subj].forEach(t => topicSelect.innerHTML += `<option value="${t}">${t}</option>`);
     } else {
-        topicSelect.innerHTML = '<option value="">-- เลือกวิชาก่อน --</option>';
+        topicSelect.innerHTML = `<option value="">${t('-- เลือกวิชาก่อน --', '-- Select subject first --')}</option>`;
     }
 }
 
@@ -80,10 +82,14 @@ function startQuiz() {
     const subj = subjectSelect.value;
     const topic = topicSelect.value;
     const num = document.getElementById('numQuestions').value;
-    if (!subj || !topic) { alert('กรุณาเลือกวิชาและบทเรียน'); return; }
+    if (!subj || !topic) { 
+        alert(t('กรุณาเลือกวิชาและบทเรียน', 'Please select a subject and a topic.')); 
+        return; 
+    }
     window.location.href = `/quiz/${subj}/${topic}?num=${num}`;
 }
 
+// ... (โค้ดวาดกราฟ Chart.js เหมือนเดิม) ...
 const summaryData = {{ summary_chart_data|tojson }};
 new Chart(document.getElementById('summaryChart').getContext('2d'), {
     type: 'bar',

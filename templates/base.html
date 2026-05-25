@@ -3,30 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- เพิ่ม CSRF Token ให้ JS อ่าน -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
     
-    <title>Adaptive Exercise System</title>
+    <title>Calculus Adaptive Prep</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script>
-    window.MathJax = {
-      tex: { inlineMath: [['\\(', '\\)']] },
-      svg: { fontCache: 'global' }
-    };
+    window.MathJax = { tex: { inlineMath: [['\\(', '\\)']] }, svg: { fontCache: 'global' } };
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <!-- Navbar (เหมือนเดิม) -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
         <div class="container">
-            <a class="navbar-brand" href="/">Adaptive exercise system</a>
-            <div class="ml-auto">
+            <a class="navbar-brand fw-bold" href="/" data-th="ระบบแบบฝึกหัดอัจฉริยะ" data-en="Adaptive Exercise System">ระบบแบบฝึกหัดอัจฉริยะ</a>
+            
+            <div class="ml-auto d-flex align-items-center">
+                <!-- ปุ่มสลับภาษา -->
+                <button class="btn btn-outline-light btn-sm me-3 fw-bold" onclick="toggleLanguage()" id="langToggleBtn">EN</button>
+
                 {% if current_user.is_authenticated %}
-                    <span class="me-2">สวัสดี, {{ current_user.username }}</span>
-                    <a href="/profile" class="btn btn-sm btn-outline-secondary">แก้ไขรหัส</a>
-                    <a href="/logout" class="btn btn-sm btn-danger">Logout</a>
+                    <span class="me-3 text-white" id="nav-greeting" data-th="สวัสดี, {{ current_user.username }}" data-en="Hello, {{ current_user.username }}">สวัสดี, {{ current_user.username }}</span>
+                    <a href="/profile" class="btn btn-sm btn-outline-light me-2" data-th="โปรไฟล์" data-en="Profile">โปรไฟล์</a>
+                    <a href="/logout" class="btn btn-sm btn-danger" data-th="ออกจากระบบ" data-en="Logout">ออกจากระบบ</a>
                 {% endif %}
             </div>
         </div>
@@ -40,5 +39,53 @@
         {% block content %}{% endblock %}
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- ================= ระบบแปลภาษา (I18N Engine) ================= -->
+    <script>
+        // 1. โหลดภาษาปัจจุบันจาก LocalStorage (ค่าเริ่มต้นคือ 'th')
+        let currentLang = localStorage.getItem('appLang') || 'th';
+
+        // 2. ฟังก์ชันสลับภาษา
+        function toggleLanguage() {
+            currentLang = currentLang === 'th' ? 'en' : 'th';
+            localStorage.setItem('appLang', currentLang);
+            applyLanguage();
+        }
+
+        // 3. ฟังก์ชันกวาดเปลี่ยนข้อความทั้งหน้าเว็บ
+        function applyLanguage() {
+            // อัปเดตปุ่มสลับภาษา
+            const btn = document.getElementById('langToggleBtn');
+            if (btn) btn.innerText = currentLang === 'th' ? 'EN' : 'TH';
+
+            // กวาดหาทุก Element ที่มี Attribute data-th และ data-en
+            const elements = document.querySelectorAll('[data-th][data-en]');
+            elements.forEach(el => {
+                if (currentLang === 'en') {
+                    // ถ้ารองรับ Placeholder (พวก Input)
+                    if (el.tagName === 'INPUT' && el.hasAttribute('placeholder')) {
+                        el.placeholder = el.getAttribute('data-en');
+                    } else {
+                        el.innerHTML = el.getAttribute('data-en');
+                    }
+                } else {
+                    if (el.tagName === 'INPUT' && el.hasAttribute('placeholder')) {
+                        el.placeholder = el.getAttribute('data-th');
+                    } else {
+                        el.innerHTML = el.getAttribute('data-th');
+                    }
+                }
+            });
+        }
+
+        // 4. ฟังก์ชันสำหรับใช้แปลข้อความใน JavaScript (เช่น alert)
+        // วิธีใช้: t('ข้อความไทย', 'English Text')
+        window.t = function(th_text, en_text) {
+            return currentLang === 'en' ? en_text : th_text;
+        };
+
+        // เรียกใช้งานทันทีเมื่อโหลดหน้าเว็บ
+        document.addEventListener('DOMContentLoaded', applyLanguage);
+    </script>
 </body>
 </html>

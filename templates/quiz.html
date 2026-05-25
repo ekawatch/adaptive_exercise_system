@@ -3,7 +3,7 @@
 <div id="quiz-container">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h3><span class="text-secondary">[{{ subject }}]</span> <span class="text-primary">{{ topic }}</span></h3>
-        <span class="badge bg-secondary fs-6" id="q-progress">ข้อที่ 1/{{ max_q }}</span>
+        <span class="badge bg-secondary fs-6" id="q-progress"><span data-th="ข้อที่" data-en="Question">ข้อที่</span> 1/{{ max_q }}</span>
     </div>
     <div class="card shadow-sm">
         <div class="card-body">
@@ -14,28 +14,28 @@
             
             <div id="choices-area" class="d-grid gap-2 mt-4"></div>
             <div class="mt-4 text-end">
-                <button id="next-btn" class="btn btn-primary btn-lg" style="display:none;" onclick="loadQuestion()">ข้อถัดไป &raquo;</button>
+                <button id="next-btn" class="btn btn-primary btn-lg" style="display:none;" onclick="loadQuestion()" data-th="ข้อถัดไป &raquo;" data-en="Next &raquo;">ข้อถัดไป &raquo;</button>
             </div>
         </div>
         <div class="card-footer text-muted d-flex justify-content-between">
-            <span>Difficulty Level: <span id="diff-display" class="fw-bold">-</span></span>
+            <span><span data-th="ระดับความยาก:" data-en="Difficulty Level:">ระดับความยาก:</span> <span id="diff-display" class="fw-bold">-</span></span>
             <small>Adaptive Mode</small>
         </div>
     </div>
 </div>
 
 <div id="result-container" style="display:none;" class="text-center mt-5">
-    <h3>🎉 สรุปผลการทดสอบ</h3>
-    <p class="fs-4">คะแนนเฉลี่ยความยาก: <span id="final-score" class="fw-bold text-primary"></span></p>
+    <h3 data-th="🎉 สรุปผลการทดสอบ" data-en="🎉 Quiz Results">🎉 สรุปผลการทดสอบ</h3>
+    <p class="fs-4"><span data-th="คะแนนเฉลี่ยความยาก:" data-en="Average Difficulty Score:">คะแนนเฉลี่ยความยาก:</span> <span id="final-score" class="fw-bold text-primary"></span></p>
     
     <div class="row justify-content-center mt-4">
         <div class="col-md-8">
-            <h5 class="text-muted mb-3">สถิติการตอบถูก/ผิด แบ่งตามระดับความยาก</h5>
+            <h5 class="text-muted mb-3" data-th="สถิติการตอบถูก/ผิด แบ่งตามระดับความยาก" data-en="Correct/Incorrect Stats by Difficulty">สถิติการตอบถูก/ผิด แบ่งตามระดับความยาก</h5>
             <canvas id="resultChart"></canvas>
         </div>
     </div>
 
-    <a href="/" class="btn btn-primary mt-4 btn-lg">กลับหน้าหลัก</a>
+    <a href="/" class="btn btn-primary mt-4 btn-lg" data-th="กลับหน้าหลัก" data-en="Back to Home">กลับหน้าหลัก</a>
 </div>
 
 <script>
@@ -56,11 +56,11 @@
         }).then(res => res.json()).then(data => {
             if (data.status === 'finished' || data.progress > maxQ) { finishQuiz(); return; }
             
-            document.getElementById('q-progress').innerText = `ข้อที่ ${data.progress}/${maxQ}`;
+            // อัปเดตข้อความผสมฟังก์ชัน t()
+            document.getElementById('q-progress').innerText = `${t('ข้อที่', 'Question')} ${data.progress}/${maxQ}`;
             document.getElementById('question-text').innerText = data.text;
             document.getElementById('diff-display').innerText = data.difficulty;
             
-            // นำ Base64 จาก Database มาแสดง
             const imgContainer = document.getElementById('image-container');
             if(data.image_data) {
                 imgContainer.innerHTML = `<img src="${data.image_data}" class="img-fluid rounded shadow-sm" style="max-height: 300px;">`;
@@ -115,14 +115,11 @@
             data: {
                 labels: ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5'],
                 datasets: [
-                    { label: 'ตอบถูก (Correct)', data: [stats[1].cor, stats[2].cor, stats[3].cor, stats[4].cor, stats[5].cor], backgroundColor: '#198754' },
-                    { label: 'ตอบผิด (Incorrect)', data: [stats[1].wro, stats[2].wro, stats[3].wro, stats[4].wro, stats[5].wro], backgroundColor: '#dc3545' }
+                    { label: t('ตอบถูก (Correct)', 'Correct'), data: [stats[1].cor, stats[2].cor, stats[3].cor, stats[4].cor, stats[5].cor], backgroundColor: '#198754' },
+                    { label: t('ตอบผิด (Incorrect)', 'Incorrect'), data: [stats[1].wro, stats[2].wro, stats[3].wro, stats[4].wro, stats[5].wro], backgroundColor: '#dc3545' }
                 ]
             },
-            options: {
-                responsive: true,
-                scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } }
-            }
+            options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
     }
     loadQuestion();
