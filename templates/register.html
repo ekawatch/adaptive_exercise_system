@@ -4,12 +4,12 @@
     <div class="col-md-6 col-lg-5">
         <div class="card shadow-sm">
             <div class="card-body">
-                <h3 class="card-title text-center mb-4">สมัครสมาชิกใหม่</h3>
+                <h3 class="card-title text-center mb-4" data-th="สมัครสมาชิกใหม่" data-en="Register New Account">สมัครสมาชิกใหม่</h3>
                 <form method="POST">
                     {{ form.hidden_tag() }}
                     
                     <div class="mb-3">
-                        <label class="form-label">Username</label>
+                        <label class="form-label fw-bold" data-th="ชื่อผู้ใช้งาน (Username)" data-en="Username">ชื่อผู้ใช้งาน (Username)</label>
                         {{ form.username(class="form-control") }}
                         {% for error in form.username.errors %}
                             <div class="text-danger small">{{ error }}</div>
@@ -17,16 +17,17 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label">รหัสนักศึกษา</label>
-                        {{ form.student_id(class="form-control", placeholder="เช่น 6508999") }}
+                        <label class="form-label fw-bold" data-th="รหัสนักศึกษา" data-en="Student ID">รหัสนักศึกษา</label>
+                        <!-- ฝัง data-th และ data-en ลงใน Flask-WTF เพื่อแปล Placeholder -->
+                        {{ form.student_id(class="form-control", placeholder="เช่น 65001234", **{'data-th':'เช่น 65001234', 'data-en':'e.g. 65001234'}) }}
                         {% for error in form.student_id.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
-                        <div class="form-text text-muted">* ตัวเลขมากกว่า 6000000</div>
+                        <div class="form-text text-muted" data-th="* ต้องมากกว่า 6,000,000" data-en="* Must be greater than 6,000,000">* ต้องมากกว่า 6,000,000</div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">Password</label>
+                        <label class="form-label fw-bold" data-th="รหัสผ่าน (Password)" data-en="Password">รหัสผ่าน (Password)</label>
                         {{ form.password(class="form-control") }}
                         {% for error in form.password.errors %}
                             <div class="text-danger small">{{ error }}</div>
@@ -34,13 +35,13 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">Confirm Password</label>
+                        <label class="form-label fw-bold" data-th="ยืนยันรหัสผ่าน (Confirm Password)" data-en="Confirm Password">ยืนยันรหัสผ่าน (Confirm Password)</label>
                         {{ form.confirm_password(class="form-control") }}
                     </div>
 
                     <div class="d-grid gap-2 mt-4">
-                        <button type="submit" class="btn btn-success">ยืนยันการสมัคร</button>
-                        <a href="/login" class="btn btn-outline-secondary">ยกเลิก</a>
+                        <button type="submit" class="btn btn-success fw-bold" data-th="ยืนยันการสมัคร" data-en="Confirm Registration">ยืนยันการสมัคร</button>
+                        <a href="/login" class="btn btn-outline-secondary" data-th="ยกเลิก" data-en="Cancel">ยกเลิก</a>
                     </div>
                 </form>
             </div>
