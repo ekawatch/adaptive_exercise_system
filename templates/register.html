@@ -19,11 +19,11 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold" data-th="รหัสนักศึกษา" data-en="Student ID">รหัสนักศึกษา</label>
                         <!-- ฝัง data-th และ data-en ลงใน Flask-WTF เพื่อแปล Placeholder -->
-                        {{ form.student_id(class="form-control", placeholder="เช่น 65001234", **{'data-th':'เช่น 65001234', 'data-en':'e.g. 65001234'}) }}
+                        {{ form.student_id(class="form-control", placeholder="เช่น 6900999", **{'data-th':'เช่น 6900999', 'data-en':'e.g. 6900999'}) }}
                         {% for error in form.student_id.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
-                        <div class="form-text text-muted" data-th="* ต้องมากกว่า 6,000,000" data-en="* Must be greater than 6,000,000">* ต้องมากกว่า 6,000,000</div>
+                        <div class="form-text text-muted" data-th="* ต้องมากกว่า 6000000" data-en="* Must be greater than 6000000">* ต้องมากกว่า 6000000</div>
                     </div>
 
                     <div class="mb-3">
