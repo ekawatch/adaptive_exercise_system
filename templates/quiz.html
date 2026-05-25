@@ -56,7 +56,6 @@
         }).then(res => res.json()).then(data => {
             if (data.status === 'finished' || data.progress > maxQ) { finishQuiz(); return; }
             
-            // อัปเดตข้อความผสมฟังก์ชัน t()
             document.getElementById('q-progress').innerText = `${t('ข้อที่', 'Question')} ${data.progress}/${maxQ}`;
             document.getElementById('question-text').innerText = data.text;
             document.getElementById('diff-display').innerText = data.difficulty;
@@ -73,6 +72,7 @@
             
             data.choices.forEach((choice, visualIndex) => {
                 const btn = document.createElement('button');
+                // ใช้คลาส .choice-btn ที่เรากำหนด CSS ไว้ใน base.html
                 btn.className = 'btn btn-outline-dark text-start py-2 fs-5 choice-btn';
                 btn.innerHTML = choice;
                 btn.onclick = () => submitAnswer(visualIndex, btn);

@@ -64,17 +64,24 @@ const dataDict = {{ subject_topics|tojson }};
 const subjectSelect = document.getElementById('subjectSelect');
 const topicSelect = document.getElementById('topicSelect');
 
+// แก้ไขการใส่ Option เพื่อแก้บั๊กบน Android Webview
 for(let subj in dataDict) {
-    subjectSelect.innerHTML += `<option value="${subj}">${subj}</option>`;
+    let opt = document.createElement('option');
+    opt.value = subj;
+    opt.textContent = subj;
+    subjectSelect.appendChild(opt);
 }
 
 function updateTopics() {
-    topicSelect.innerHTML = '';
+    topicSelect.innerHTML = `<option value="">${t('-- เลือกวิชาก่อน --', '-- Select subject first --')}</option>`;
     const subj = subjectSelect.value;
     if(subj && dataDict[subj]) {
-        dataDict[subj].forEach(t => topicSelect.innerHTML += `<option value="${t}">${t}</option>`);
-    } else {
-        topicSelect.innerHTML = `<option value="">${t('-- เลือกวิชาก่อน --', '-- Select subject first --')}</option>`;
+        dataDict[subj].forEach(t_val => {
+            let opt = document.createElement('option');
+            opt.value = t_val;
+            opt.textContent = t_val;
+            topicSelect.appendChild(opt);
+        });
     }
 }
 
@@ -89,7 +96,6 @@ function startQuiz() {
     window.location.href = `/quiz/${subj}/${topic}?num=${num}`;
 }
 
-// ... (โค้ดวาดกราฟ Chart.js เหมือนเดิม) ...
 const summaryData = {{ summary_chart_data|tojson }};
 new Chart(document.getElementById('summaryChart').getContext('2d'), {
     type: 'bar',
