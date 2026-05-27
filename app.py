@@ -122,10 +122,8 @@ def get_hidden_topics():
 with app.app_context():
     db.create_all()
     try:
-        # บังคับสร้างคอลัมน์ image_data (ถ้ามีอยู่แล้ว มันจะเข้า except และข้ามไปเงียบๆ)
         db.session.execute(text("ALTER TABLE questions ADD COLUMN image_data TEXT;"))
         db.session.commit()
-        print("เพิ่มคอลัมน์ image_data สำเร็จ!")
     except Exception:
         db.session.rollback()
 
@@ -244,10 +242,11 @@ def admin_dashboard():
                 db.session.rollback()
                 flash(f'เกิดข้อผิดพลาด: {str(e)}')
 
-    if current_user.is_super_admin:
+    # === [FIX] ตรรกะการตรวจสอบสิทธิ์ว่าต้องจำกัดวิชาหรือไม่ ===
+    if current_user.is_super_admin or not current_user.allowed_subjects:
         all_topics_query = db.session.query(Question.subject, Question.topic).distinct().all()
     else:
-        allowed = current_user.allowed_subjects or []
+        allowed = current_user.allowed_subjects
         all_topics_query = db.session.query(Question.subject, Question.topic)\
             .filter(Question.subject.in_(allowed)).distinct().all()
 
@@ -326,8 +325,9 @@ def admin_move_topic():
     if not old_subject or not topic or not new_subject:
         return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ครบถ้วน'}), 400
 
-    if not current_user.is_super_admin:
-        allowed = current_user.allowed_subjects or []
+    # === [FIX] ตรรกะการตรวจสอบสิทธิ์ ===
+    if not current_user.is_super_admin and current_user.allowed_subjects:
+        allowed = current_user.allowed_subjects
         if old_subject not in allowed or new_subject not in allowed:
             return jsonify({'status': 'error', 'message': 'ไม่มีสิทธิ์จัดการหรือย้ายไปยังวิชาดังกล่าว'}), 403
 
@@ -369,8 +369,9 @@ def bulk_manage_questions():
 
     questions = Question.query.filter(Question.id.in_(q_ids)).all()
 
-    if not current_user.is_super_admin:
-        allowed = current_user.allowed_subjects or []
+    # === [FIX] ตรรกะการตรวจสอบสิทธิ์ ===
+    if not current_user.is_super_admin and current_user.allowed_subjects:
+        allowed = current_user.allowed_subjects
         for q in questions:
             if q.subject not in allowed:
                 return jsonify({'status': 'error', 'message': f'ไม่มีสิทธิ์จัดการข้อสอบ ID {q.id}'}), 403
@@ -419,8 +420,9 @@ def update_question():
     if not q:
         return jsonify({'status': 'error', 'message': 'ไม่พบข้อสอบในระบบ'}), 404
 
-    if not current_user.is_super_admin:
-        allowed = current_user.allowed_subjects or []
+    # === [FIX] ตรรกะการตรวจสอบสิทธิ์ ===
+    if not current_user.is_super_admin and current_user.allowed_subjects:
+        allowed = current_user.allowed_subjects
         if q.subject not in allowed:
             return jsonify({'status': 'error', 'message': 'ไม่มีสิทธิ์แก้ไขข้อสอบวิชานี้'}), 403
 
@@ -444,7 +446,6 @@ def view_questions():
     questions = Question.query.filter_by(subject=subj, topic=top).order_by(Question.id).all()
     return render_template('admin_questions.html', subject=subj, topic=top, questions=questions)
 
-# --- ระบบอัปโหลดรูปภาพผ่านเว็บ (แปลงไฟล์เป็น Base64 แล้วเซฟลง DB ทันที) ---
 @app.route('/api/admin/upload_image/<int:q_id>', methods=['POST'])
 @admin_required
 def upload_image(q_id):
@@ -552,7 +553,7 @@ def backup_database():
             'choices': q.choices,
             'correctAnswerIndex': q.correct_idx, 
             'difficulty': q.difficulty,
-            'image_data': q.image_data # สำรองข้อมูล Base64 ทั้งก้อน
+            'image_data': q.image_data 
         }
         backup_data.append(q_dict)
 
@@ -588,7 +589,13 @@ def admin_stats():
 def index():
     if current_user.is_admin: return redirect(url_for('admin_dashboard'))
 
-    all_topics_query = db.session.query(Question.subject, Question.topic).distinct().all()
+    # กรองวิชาที่นักเรียนจะเห็น
+    if current_user.is_super_admin or not current_user.allowed_subjects:
+        all_topics_query = db.session.query(Question.subject, Question.topic).distinct().all()
+    else:
+        allowed = current_user.allowed_subjects
+        all_topics_query = db.session.query(Question.subject, Question.topic).filter(Question.subject.in_(allowed)).distinct().all()
+
     hidden_topics = get_hidden_topics()
     
     subject_topics = defaultdict(list)
