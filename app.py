@@ -20,9 +20,6 @@ from models import db, User, Question, ExerciseSession, AnswerTransaction, Topic
 
 app = Flask(__name__)
 
-# ==========================================
-# Database Connection Fix สำหรับ Render.com
-# ==========================================
 db_url = os.environ.get('DATABASE_URL', 'postgresql://localhost/mathdb')
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
@@ -31,7 +28,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'd16aae0acc60c55a8886fc6e9c6b04f5') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Config สำหรับการอัปโหลดรูป (เผื่อเหลือเผื่อขาด ยังเก็บไว้)
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'svg'}
@@ -116,9 +112,6 @@ def get_hidden_topics():
     hidden = TopicSetting.query.filter_by(is_hidden=True).all()
     return {(h.subject, h.topic) for h in hidden}
 
-# ==========================================
-# ดำเนินการอัปเดตโครงสร้าง Database อัตโนมัติ
-# ==========================================
 with app.app_context():
     db.create_all()
     try:
@@ -223,7 +216,6 @@ def admin_dashboard():
                     db.session.add(q)
                     db.session.flush() 
                     
-                    # --- แปลง SVG จาก JSON เป็น Base64 เก็บลง Database ---
                     svg_content = item.get('svg')
                     if svg_content and isinstance(svg_content, str) and svg_content.strip():
                         if 'xmlns=' not in svg_content:
@@ -262,12 +254,29 @@ def admin_dashboard():
     
     return render_template('admin.html', upload_form=upload_form, topics_status=topics_status)
 
+
+# === [แก้ไขล่าสุด] จัดการส่งชื่อวิชาไปทำ Checkbox ===
 @app.route('/admin/users')
 @admin_required
 def admin_users():
     users = User.query.filter_by(is_admin=False).order_by(User.id).all()
     admins = User.query.filter_by(is_admin=True).all() if current_user.is_super_admin else []
-    return render_template('admin_users.html', users=users, admins=admins)
+    
+    all_subjects = []
+    admin_perms = {}
+    
+    if current_user.is_super_admin:
+        # ดึงวิชาทั้งหมดมาสร้างเป็น checkbox
+        subjects_query = db.session.query(Question.subject).distinct().all()
+        all_subjects = [s[0] for s in subjects_query if s[0]]
+        
+        # จัดเตรียมข้อมูลว่าใครมีสิทธิ์วิชาไหนบ้าง เพื่อส่งไปติ๊กถูกอัตโนมัติใน JS
+        for a in admins:
+            admin_perms[a.username] = a.allowed_subjects
+            
+    return render_template('admin_users.html', users=users, admins=admins, all_subjects=all_subjects, admin_perms=admin_perms)
+# =================================================
+
 
 @app.route('/api/admin/reset_password', methods=['POST'])
 @admin_required
@@ -280,6 +289,7 @@ def admin_reset_password():
     user.password = generate_password_hash(new_raw_password, method='scrypt')
     db.session.commit()
     return jsonify({'status': 'ok', 'new_password': new_raw_password, 'username': user.username})
+
 
 @app.route('/api/super/manage_admin', methods=['POST'])
 @super_admin_required
@@ -299,9 +309,6 @@ def manage_admin():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-# ==========================================================
-# [NEW API] ลบผู้ใช้งาน (เฉพาะ Super Admin และต้องใส่รหัสผ่าน)
-# ==========================================================
 @app.route('/api/super/delete_user', methods=['POST'])
 @super_admin_required
 def delete_user():
@@ -323,7 +330,6 @@ def delete_user():
         return jsonify({'status': 'error', 'message': 'ไม่พบบัญชีผู้ใช้งานนี้ในระบบ'}), 404
 
     try:
-        # ลบประวัติการทำข้อสอบ (Transaction & Session) เพื่อไม่ให้ติด Foreign Key
         sessions = ExerciseSession.query.filter_by(user_id=target_user_id).all()
         session_ids = [s.id for s in sessions]
         
@@ -331,7 +337,6 @@ def delete_user():
             AnswerTransaction.query.filter(AnswerTransaction.session_id.in_(session_ids)).delete(synchronize_session=False)
             ExerciseSession.query.filter(ExerciseSession.user_id == target_user_id).delete(synchronize_session=False)
         
-        # ลบ User
         db.session.delete(target_user)
         db.session.commit()
         
@@ -339,7 +344,6 @@ def delete_user():
     except Exception as e:
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
-
 
 @app.route('/api/admin/toggle_topic', methods=['POST'])
 @admin_required
