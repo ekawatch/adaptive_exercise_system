@@ -242,7 +242,6 @@ def admin_dashboard():
                 db.session.rollback()
                 flash(f'เกิดข้อผิดพลาด: {str(e)}')
 
-    # === [FIX] ตรรกะการตรวจสอบสิทธิ์ว่าต้องจำกัดวิชาหรือไม่ ===
     if current_user.is_super_admin or not current_user.allowed_subjects:
         all_topics_query = db.session.query(Question.subject, Question.topic).distinct().all()
     else:
@@ -300,6 +299,48 @@ def manage_admin():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
+# ==========================================================
+# [NEW API] ลบผู้ใช้งาน (เฉพาะ Super Admin และต้องใส่รหัสผ่าน)
+# ==========================================================
+@app.route('/api/super/delete_user', methods=['POST'])
+@super_admin_required
+def delete_user():
+    data = request.json
+    target_user_id = data.get('target_user_id')
+    password = data.get('superadmin_password')
+
+    if not target_user_id or not password:
+        return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ครบถ้วน'}), 400
+
+    if not check_password_hash(current_user.password, password):
+        return jsonify({'status': 'error', 'message': 'รหัสผ่าน Super Admin ไม่ถูกต้อง! ปฏิเสธการลบ'}), 403
+
+    if int(target_user_id) == current_user.id:
+        return jsonify({'status': 'error', 'message': 'ไม่สามารถลบบัญชีของตนเองได้'}), 400
+
+    target_user = User.query.get(target_user_id)
+    if not target_user:
+        return jsonify({'status': 'error', 'message': 'ไม่พบบัญชีผู้ใช้งานนี้ในระบบ'}), 404
+
+    try:
+        # ลบประวัติการทำข้อสอบ (Transaction & Session) เพื่อไม่ให้ติด Foreign Key
+        sessions = ExerciseSession.query.filter_by(user_id=target_user_id).all()
+        session_ids = [s.id for s in sessions]
+        
+        if session_ids:
+            AnswerTransaction.query.filter(AnswerTransaction.session_id.in_(session_ids)).delete(synchronize_session=False)
+            ExerciseSession.query.filter(ExerciseSession.user_id == target_user_id).delete(synchronize_session=False)
+        
+        # ลบ User
+        db.session.delete(target_user)
+        db.session.commit()
+        
+        return jsonify({'status': 'ok', 'message': f'ลบบัญชี "{target_user.username}" สำเร็จแล้ว'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/admin/toggle_topic', methods=['POST'])
 @admin_required
 def admin_toggle_topic():
@@ -325,7 +366,6 @@ def admin_move_topic():
     if not old_subject or not topic or not new_subject:
         return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ครบถ้วน'}), 400
 
-    # === [FIX] ตรรกะการตรวจสอบสิทธิ์ ===
     if not current_user.is_super_admin and current_user.allowed_subjects:
         allowed = current_user.allowed_subjects
         if old_subject not in allowed or new_subject not in allowed:
@@ -369,7 +409,6 @@ def bulk_manage_questions():
 
     questions = Question.query.filter(Question.id.in_(q_ids)).all()
 
-    # === [FIX] ตรรกะการตรวจสอบสิทธิ์ ===
     if not current_user.is_super_admin and current_user.allowed_subjects:
         allowed = current_user.allowed_subjects
         for q in questions:
@@ -420,7 +459,6 @@ def update_question():
     if not q:
         return jsonify({'status': 'error', 'message': 'ไม่พบข้อสอบในระบบ'}), 404
 
-    # === [FIX] ตรรกะการตรวจสอบสิทธิ์ ===
     if not current_user.is_super_admin and current_user.allowed_subjects:
         allowed = current_user.allowed_subjects
         if q.subject not in allowed:
@@ -589,7 +627,6 @@ def admin_stats():
 def index():
     if current_user.is_admin: return redirect(url_for('admin_dashboard'))
 
-    # กรองวิชาที่นักเรียนจะเห็น
     if current_user.is_super_admin or not current_user.allowed_subjects:
         all_topics_query = db.session.query(Question.subject, Question.topic).distinct().all()
     else:

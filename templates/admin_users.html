@@ -1,54 +1,209 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container">
-    <h3>จัดการบัญชีนักศึกษา</h3>
-    <table class="table table-hover align-middle mb-5">
-        <thead class="table-dark"><tr><th>ID</th><th>Username</th><th>Student ID</th><th class="text-end">Actions</th></tr></thead>
+    <h3 data-th="จัดการบัญชีนักศึกษา" data-en="Manage Student Accounts">จัดการบัญชีนักศึกษา</h3>
+    <table class="table table-hover align-middle mb-5 shadow-sm bg-white">
+        <thead class="table-dark">
+            <tr>
+                <th>ID</th>
+                <th data-th="ชื่อผู้ใช้งาน (Username)" data-en="Username">ชื่อผู้ใช้งาน (Username)</th>
+                <th data-th="รหัสนักศึกษา" data-en="Student ID">รหัสนักศึกษา</th>
+                <th class="text-end" data-th="จัดการ (Actions)" data-en="Actions">จัดการ (Actions)</th>
+            </tr>
+        </thead>
         <tbody>
             {% for u in users %}
             <tr>
-                <td>{{ u.id }}</td><td>{{ u.username }}</td><td>{{ u.student_id }}</td>
-                <td class="text-end"><button class="btn btn-sm btn-danger" onclick="resetPassword({{ u.id }})">Reset Password</button></td>
+                <td>{{ u.id }}</td>
+                <td class="fw-bold text-primary">{{ u.username }}</td>
+                <td>{{ u.student_id }}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-warning fw-bold" onclick="resetPassword({{ u.id }})" data-th="รีเซ็ตรหัส" data-en="Reset Password">รีเซ็ตรหัส</button>
+                    <!-- แสดงปุ่มลบ เฉพาะ Super Admin -->
+                    {% if current_user.is_super_admin %}
+                    <button class="btn btn-sm btn-outline-danger ms-1" onclick="openDeleteModal({{ u.id }}, '{{ u.username }}')" data-th="ลบ" data-en="Delete">ลบ</button>
+                    {% endif %}
+                </td>
             </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center text-muted" data-th="ไม่มีข้อมูลนักศึกษา" data-en="No student records">ไม่มีข้อมูลนักศึกษา</td></tr>
             {% endfor %}
         </tbody>
     </table>
 
     {% if current_user.is_super_admin %}
-    <h3 class="mt-4 text-primary">ระบบ Super Admin: จัดการสิทธิ์ผู้สอน</h3>
-    <div class="card p-3 mb-4">
+    <h3 class="mt-4 text-danger fw-bold" data-th="ระบบ Super Admin: จัดการสิทธิ์ผู้สอน" data-en="Super Admin: Manage Instructors">ระบบ Super Admin: จัดการสิทธิ์ผู้สอน</h3>
+    <div class="card p-3 mb-4 shadow-sm border-danger">
         <div class="row">
-            <div class="col-md-4"><input type="text" id="adminUser" class="form-control" placeholder="Username (ใหม่/เก่า)"></div>
-            <div class="col-md-5"><input type="text" id="adminSubj" class="form-control" placeholder="วิชาที่อนุญาต (คั่นด้วยคอมม่า) เว้นว่าง=ทั้งหมด"></div>
-            <div class="col-md-3"><button class="btn btn-primary w-100" onclick="manageAdmin()">บันทึกแอดมิน</button></div>
+            <div class="col-md-4">
+                <input type="text" id="adminUser" class="form-control" placeholder="Username (ใหม่/เก่า)" data-th="Username (ใหม่/เก่า)" data-en="Username (New/Old)">
+            </div>
+            <div class="col-md-5">
+                <input type="text" id="adminSubj" class="form-control" placeholder="วิชาที่อนุญาต (คั่นด้วยคอมม่า) เว้นว่าง=ทั้งหมด" data-th="วิชาที่อนุญาต (คั่นด้วยคอมม่า) เว้นว่าง=ทั้งหมด" data-en="Allowed subjects (comma separated), blank=All">
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-danger w-100 fw-bold" onclick="manageAdmin()" data-th="บันทึกแอดมิน" data-en="Save Admin">บันทึกแอดมิน</button>
+            </div>
         </div>
     </div>
     
-    <table class="table table-bordered bg-white">
-        <thead class="table-primary"><tr><th>Admin Name</th><th>วิชาที่ดูแลได้ (Tags)</th></tr></thead>
+    <table class="table table-bordered bg-white shadow-sm align-middle">
+        <thead class="table-danger">
+            <tr>
+                <th data-th="ชื่อผู้ดูแลระบบ (Admin Name)" data-en="Admin Name">ชื่อผู้ดูแลระบบ (Admin Name)</th>
+                <th data-th="วิชาที่ดูแลได้ (Tags)" data-en="Allowed Subjects (Tags)">วิชาที่ดูแลได้ (Tags)</th>
+                <th class="text-end" data-th="จัดการ" data-en="Manage">จัดการ</th>
+            </tr>
+        </thead>
         <tbody>
             {% for a in admins %}
-            <tr><td>{{ a.username }} {{ '(Super Admin)' if a.is_super_admin else '' }}</td><td>{{ a.allowed_subjects|join(', ') if a.allowed_subjects else 'All Subjects' }}</td></tr>
+            <tr>
+                <td class="fw-bold">{{ a.username }} {% if a.is_super_admin %}<span class="badge bg-danger">Super Admin</span>{% endif %}</td>
+                <td>
+                    {% if a.allowed_subjects %}
+                        {{ a.allowed_subjects|join(', ') }}
+                    {% else %}
+                        <span class="text-success fw-bold" data-th="ทุกวิชา (All Subjects)" data-en="All Subjects">ทุกวิชา (All Subjects)</span>
+                    {% endif %}
+                </td>
+                <td class="text-end">
+                    {% if current_user.id != a.id %}
+                    <button class="btn btn-sm btn-outline-danger" onclick="openDeleteModal({{ a.id }}, '{{ a.username }}')" data-th="ลบแอดมิน" data-en="Delete Admin">ลบแอดมิน</button>
+                    {% else %}
+                    <span class="text-muted small" data-th="(บัญชีของคุณ)" data-en="(Your account)">(บัญชีของคุณ)</span>
+                    {% endif %}
+                </td>
+            </tr>
             {% endfor %}
         </tbody>
     </table>
     {% endif %}
 </div>
 
+<!-- ================= MODAL สำหรับยืนยันการลบและใส่รหัสผ่าน ================= -->
+<div class="modal fade" id="deleteUserModal" tabindex="-1" aria-labelledby="deleteUserModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title fw-bold" id="deleteUserModalLabel" data-th="⚠️ ยืนยันการลบบัญชีผู้ใช้งาน" data-en="⚠️ Confirm Account Deletion">⚠️ ยืนยันการลบบัญชีผู้ใช้งาน</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>
+            <span data-th="คุณกำลังจะลบบัญชีผู้ใช้งาน:" data-en="You are about to delete user:">คุณกำลังจะลบบัญชีผู้ใช้งาน:</span> 
+            <strong id="del-username-display" class="text-danger fs-5"></strong>
+        </p>
+        <p class="text-muted small" data-th="การกระทำนี้จะลบข้อมูลและประวัติการทำแบบฝึกหัดทั้งหมดของบัญชีนี้ออกจากฐานข้อมูลโดยถาวร (ไม่สามารถกู้คืนได้)" data-en="This action will permanently delete all records and exercise histories of this account from the database (Cannot be undone).">
+            การกระทำนี้จะลบข้อมูลและประวัติการทำแบบฝึกหัดทั้งหมดของบัญชีนี้ออกจากฐานข้อมูลโดยถาวร (ไม่สามารถกู้คืนได้)
+        </p>
+        
+        <input type="hidden" id="del-target-user-id">
+        
+        <div class="mb-3 mt-4 p-3 bg-light border rounded">
+            <label class="form-label fw-bold text-dark" data-th="🔐 กรุณายืนยันรหัสผ่าน Super Admin ของคุณ:" data-en="🔐 Please enter your Super Admin password:">
+                🔐 กรุณายืนยันรหัสผ่าน Super Admin ของคุณ:
+            </label>
+            <input type="password" id="superadmin-password-input" class="form-control border-danger" placeholder="••••••••">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-th="ยกเลิก" data-en="Cancel">ยกเลิก</button>
+        <button type="button" class="btn btn-danger fw-bold" onclick="confirmDeleteUser()" data-th="ยืนยันการลบถาวร" data-en="Confirm Permanent Delete">ยืนยันการลบถาวร</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ==================================================================== -->
+
 <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    let deleteModalInstance = null;
+
+    document.addEventListener("DOMContentLoaded", function() {
+        // อัปเดตภาษา (ถ้าหน้าเว็บมีระบบภาษา)
+        if(typeof applyLanguage === 'function') applyLanguage();
+        
+        const modalEl = document.getElementById('deleteUserModal');
+        if(modalEl) deleteModalInstance = new bootstrap.Modal(modalEl);
+    });
+
+    // รีเซ็ตรหัสผ่าน (ของเดิม)
     function resetPassword(id) {
-        fetch('/api/admin/reset_password', { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({user_id:id}) })
-        .then(res=>res.json()).then(data=> { alert(`รหัสผ่านใหม่: ${data.new_password}`); });
+        if(!confirm(t('ยืนยันการรีเซ็ตรหัสผ่าน?', 'Confirm password reset?'))) return;
+        
+        fetch('/api/admin/reset_password', { 
+            method:'POST', 
+            headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, 
+            body:JSON.stringify({user_id:id}) 
+        })
+        .then(res=>res.json())
+        .then(data=> { 
+            if(data.status === 'ok') alert(`${t('รหัสผ่านใหม่:', 'New Password:')} ${data.new_password}`); 
+            else alert(data.message);
+        });
     }
     
+    // จัดการแอดมิน (ของเดิม)
     function manageAdmin() {
         const user = document.getElementById('adminUser').value;
         const subjStr = document.getElementById('adminSubj').value;
         const subjects = subjStr ? subjStr.split(',').map(s => s.trim()) : null;
         
-        fetch('/api/super/manage_admin', { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({username:user, subjects:subjects}) })
-        .then(res=>res.json()).then(data=> location.reload());
+        if(!user) {
+            alert(t('กรุณาระบุ Username', 'Please enter a Username'));
+            return;
+        }
+
+        fetch('/api/super/manage_admin', { 
+            method:'POST', 
+            headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, 
+            body:JSON.stringify({username:user, subjects:subjects}) 
+        })
+        .then(res=>res.json())
+        .then(data=> {
+            if(data.status === 'ok') location.reload();
+            else alert(data.message);
+        });
+    }
+
+    // ================= ระบบลบผู้ใช้งาน =================
+    function openDeleteModal(userId, username) {
+        document.getElementById('del-target-user-id').value = userId;
+        document.getElementById('del-username-display').innerText = username;
+        document.getElementById('superadmin-password-input').value = ""; // เคลียร์ช่องรหัสผ่าน
+        deleteModalInstance.show();
+    }
+
+    function confirmDeleteUser() {
+        const targetId = document.getElementById('del-target-user-id').value;
+        const password = document.getElementById('superadmin-password-input').value;
+
+        if (!password) {
+            alert(t('กรุณากรอกรหัสผ่าน Super Admin', 'Please enter your Super Admin password.'));
+            return;
+        }
+
+        fetch('/api/super/delete_user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ 
+                target_user_id: targetId, 
+                superadmin_password: password 
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                alert(data.message);
+                location.reload(); // รีเฟรชเพื่อแสดงตารางใหม่
+            } else {
+                alert(t('ข้อผิดพลาด: ', 'Error: ') + data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert(t('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'Unable to connect to the server.'));
+        });
     }
 </script>
 {% endblock %}
