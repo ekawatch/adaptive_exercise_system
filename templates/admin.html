@@ -49,15 +49,31 @@
         <div class="col-md-4 mb-3">
             <div class="card border-success h-100">
                 <div class="card-header bg-success text-white">3. Export Database</div>
-                <div class="card-body d-grid gap-2">
-                    <!-- ปุ่มสำหรับ Export สถิตินักเรียน -->
-                    <a href="/admin/export/sessions" class="btn btn-outline-success">Export การเข้าทำ (Excel)</a>
-                    <a href="/admin/export/transactions" class="btn btn-outline-success">Export การตอบรายข้อ (Excel)</a>
-                    
-                    <!-- ปุ่มสำหรับ Backup ระบบ (เฉพาะ Super Admin) -->
-                    {% if current_user.is_super_admin %}
-                    <a href="/admin/backup" class="btn btn-success fw-bold mt-2">Backup โจทย์ทั้งหมด (JSON)</a>
-                    {% endif %}
+                <div class="card-body">
+                    <!-- แบบฟอร์ม Export Sessions แยกตามวิชา -->
+                    <form action="/admin/export/sessions" method="GET" class="mb-3">
+                        <label class="form-label fw-bold text-success small">Export การเข้าทำ (Excel)</label>
+                        <div class="input-group input-group-sm">
+                            <select name="subject" class="form-select border-success">
+                                <option value="all">ทุกวิชา (All Subjects)</option>
+                                {% for subj in all_subjects %}
+                                <option value="{{ subj }}">{{ subj }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-success fw-bold">Download</button>
+                        </div>
+                    </form>
+
+                    <hr>
+
+                    <div class="d-grid gap-2">
+                        <a href="/admin/export/transactions" class="btn btn-sm btn-outline-success">Export การตอบรายข้อ (Excel)</a>
+                        
+                        <!-- ปุ่มสำหรับ Backup ระบบ (เฉพาะ Super Admin) -->
+                        {% if current_user.is_super_admin %}
+                        <a href="/admin/backup" class="btn btn-sm btn-success fw-bold mt-2">Backup โจทย์ทั้งหมด (JSON)</a>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -105,19 +121,15 @@
 </div>
 
 <script>
-    // ดึง CSRF Token เพื่อใช้กับการส่งข้อมูลแบบ POST (ป้องกันความปลอดภัย)
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const topicsStatus = {{ topics_status|tojson }};
     
-    // ตั้งค่าตัวเลือกวิชาในกล่องตรวจสอบคลังข้อสอบ
     const vSubj = document.getElementById('viewSubj');
     const vTopic = document.getElementById('viewTopic');
     
-    // กรองชื่อวิชาที่ไม่ซ้ำกัน
     const subjSet = [...new Set(topicsStatus.map(t => t.subject))];
     subjSet.forEach(s => vSubj.innerHTML += `<option value="${s}">${s}</option>`);
 
-    // ฟังก์ชันอัปเดตช่องเลือก Topic เมื่อเปลี่ยนวิชา
     function updateViewTopics() {
         vTopic.innerHTML = '';
         topicsStatus.filter(t => t.subject === vSubj.value).forEach(t => {
@@ -125,7 +137,6 @@
         });
     }
 
-    // ฟังก์ชันสำหรับเปิด/ปิด การมองเห็นของ Topic
     function toggleTopic(subj, topic, idx) {
         fetch('/api/admin/toggle_topic', {
             method: 'POST',
@@ -140,7 +151,6 @@
         });
     }
 
-    // ฟังก์ชันสำหรับย้าย Topic ข้ามวิชา
     function moveTopic(oldSubject, topic) {
         const newSubject = prompt(`คุณกำลังจะย้ายหัวข้อ "${topic}"\nจากวิชาเดิม: "${oldSubject}"\n\nกรุณาพิมพ์ชื่อ "วิชาใหม่" ที่ต้องการย้ายไป:`);
         
@@ -161,7 +171,7 @@
                 .then(data => {
                     if(data.status === 'ok') {
                         alert(data.message);
-                        location.reload(); // รีเฟรชหน้าเพื่ออัปเดตข้อมูลใหม่ในตาราง
+                        location.reload(); 
                     } else {
                         alert('เกิดข้อผิดพลาด: ' + data.message);
                     }

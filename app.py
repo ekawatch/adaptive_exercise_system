@@ -20,6 +20,9 @@ from models import db, User, Question, ExerciseSession, AnswerTransaction, Topic
 
 app = Flask(__name__)
 
+# ==========================================
+# Database Connection Fix สำหรับ Render.com
+# ==========================================
 db_url = os.environ.get('DATABASE_URL', 'postgresql://localhost/mathdb')
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
@@ -28,6 +31,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'd16aae0acc60c55a8886fc6e9c6b04f5') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Config สำหรับการอัปโหลดรูป
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'svg'}
@@ -245,17 +249,20 @@ def admin_dashboard():
     hidden_map = {(s.subject, s.topic): s.is_hidden for s in settings}
     
     topics_status = []
+    all_subjects_set = set() # เก็บลายชื่อวิชาสำหรับหน้า Export
+    
     for subj, top in all_topics_query:
         topics_status.append({
             'subject': subj,
             'topic': top,
             'is_hidden': hidden_map.get((subj, top), True)
         })
+        all_subjects_set.add(subj)
+        
+    all_subjects = sorted(list(all_subjects_set))
     
-    return render_template('admin.html', upload_form=upload_form, topics_status=topics_status)
+    return render_template('admin.html', upload_form=upload_form, topics_status=topics_status, all_subjects=all_subjects)
 
-
-# === [แก้ไขล่าสุด] จัดการส่งชื่อวิชาไปทำ Checkbox ===
 @app.route('/admin/users')
 @admin_required
 def admin_users():
@@ -266,17 +273,12 @@ def admin_users():
     admin_perms = {}
     
     if current_user.is_super_admin:
-        # ดึงวิชาทั้งหมดมาสร้างเป็น checkbox
         subjects_query = db.session.query(Question.subject).distinct().all()
         all_subjects = [s[0] for s in subjects_query if s[0]]
-        
-        # จัดเตรียมข้อมูลว่าใครมีสิทธิ์วิชาไหนบ้าง เพื่อส่งไปติ๊กถูกอัตโนมัติใน JS
         for a in admins:
             admin_perms[a.username] = a.allowed_subjects
             
     return render_template('admin_users.html', users=users, admins=admins, all_subjects=all_subjects, admin_perms=admin_perms)
-# =================================================
-
 
 @app.route('/api/admin/reset_password', methods=['POST'])
 @admin_required
@@ -289,7 +291,6 @@ def admin_reset_password():
     user.password = generate_password_hash(new_raw_password, method='scrypt')
     db.session.commit()
     return jsonify({'status': 'ok', 'new_password': new_raw_password, 'username': user.username})
-
 
 @app.route('/api/super/manage_admin', methods=['POST'])
 @super_admin_required
@@ -515,13 +516,41 @@ def upload_image(q_id):
 @app.route('/admin/export/sessions')
 @admin_required
 def export_sessions():
-    results = db.session.query(ExerciseSession, User)\
+    subject_filter = request.args.get('subject', 'all')
+    
+    query = db.session.query(ExerciseSession, User)\
         .join(User, ExerciseSession.user_id == User.id)\
-        .filter(User.is_admin == False)\
-        .order_by(ExerciseSession.created_at.desc()).all()
+        .filter(User.is_admin == False)
+        
+    if subject_filter != 'all':
+        query = query.filter(ExerciseSession.subject == subject_filter)
+
+    results = query.order_by(ExerciseSession.created_at.desc()).all()
+    
+    # โหลด Transactions ทั้งหมดเพื่อนำมาคำนวณจำนวนข้อ Level 1-5 แบบรวดเร็ว
+    session_ids = [sess.id for sess, user in results]
+    if session_ids:
+        transactions = AnswerTransaction.query.filter(AnswerTransaction.session_id.in_(session_ids)).all()
+    else:
+        transactions = []
+        
+    trans_by_session = defaultdict(list)
+    for t in transactions:
+        trans_by_session[t.session_id].append(t)
     
     data = []
     for sess, user in results:
+        sess_trans = trans_by_session[sess.id]
+        
+        # เตรียมที่เก็บสถิติ Level 1-5
+        stats = {i: {'attempted': 0, 'correct': 0} for i in range(1, 6)}
+        
+        for t in sess_trans:
+            if 1 <= t.difficulty <= 5:
+                stats[t.difficulty]['attempted'] += 1
+                if t.is_correct:
+                    stats[t.difficulty]['correct'] += 1
+        
         data.append({
             'Session ID': sess.id,
             'Username': user.username,
@@ -529,21 +558,37 @@ def export_sessions():
             'Subject': sess.subject,
             'Topic': sess.topic,
             'Avg Score': round(sess.total_score_avg, 2),
-            'Time': sess.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            'Time': sess.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'level1': stats[1]['attempted'],
+            'level1correct': stats[1]['correct'],
+            'level2': stats[2]['attempted'],
+            'level2correct': stats[2]['correct'],
+            'level3': stats[3]['attempted'],
+            'level3correct': stats[3]['correct'],
+            'level4': stats[4]['attempted'],
+            'level4correct': stats[4]['correct'],
+            'level5': stats[5]['attempted'],
+            'level5correct': stats[5]['correct']
         })
     
     df = pd.DataFrame(data)
     output = BytesIO()
+    
     if not df.empty:
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Sessions')
     else:
-        df = pd.DataFrame(columns=['Session ID', 'Username', 'Student ID', 'Subject', 'Topic', 'Avg Score', 'Time'])
+        # สร้างคอลัมน์เปล่าเผื่อกรณีไม่มีข้อมูล
+        cols = ['Session ID', 'Username', 'Student ID', 'Subject', 'Topic', 'Avg Score', 'Time',
+                'level1', 'level1correct', 'level2', 'level2correct', 'level3', 'level3correct',
+                'level4', 'level4correct', 'level5', 'level5correct']
+        df = pd.DataFrame(columns=cols)
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Sessions')
 
     output.seek(0)
-    return send_file(output, download_name="student_sessions.xlsx", as_attachment=True)
+    filename = "student_sessions.xlsx" if subject_filter == 'all' else f"sessions_{subject_filter}.xlsx"
+    return send_file(output, download_name=filename, as_attachment=True)
 
 @app.route('/admin/export/transactions')
 @admin_required
