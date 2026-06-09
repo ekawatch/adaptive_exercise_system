@@ -83,12 +83,13 @@
             <div class="card shadow-sm">
                 <div class="card-header bg-secondary text-white">4. จัดการโครงสร้าง และการมองเห็น (Visibility)</div>
                 <div class="card-body">
-                    <table class="table table-hover align-middle">
+                    <table class="table table-hover align-middle" id="visibilityTable">
                         <thead class="table-light">
+                            <!-- เพิ่มคุณสมบัติการจัดเรียง (Sorting) ด้วยการกดที่หัวตาราง -->
                             <tr>
-                                <th>วิชา (Subject)</th>
-                                <th>หัวข้อ (Topic)</th>
-                                <th class="text-center">สถานะ</th>
+                                <th class="sortable" style="cursor: pointer;" onclick="sortTable(0)">วิชา (Subject) ↕️</th>
+                                <th class="sortable" style="cursor: pointer;" onclick="sortTable(1)">หัวข้อ (Topic) ↕️</th>
+                                <th class="sortable text-center" style="cursor: pointer;" onclick="sortTable(2)">สถานะ ↕️</th>
                                 <th class="text-end">Action</th>
                             </tr>
                         </thead>
@@ -181,6 +182,47 @@
                 });
             }
         }
+    }
+
+    // ================= ระบบจัดเรียงตารางด้วยการกดหัวตาราง (Sorting) =================
+    let sortOrders = {};
+    function sortTable(colIndex) {
+        const table = document.getElementById("visibilityTable");
+        const tbody = table.querySelector("tbody");
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+        
+        // กำหนดทิศทางการจัดเรียง
+        let dir = sortOrders[colIndex] === 'asc' ? 'desc' : 'asc';
+        sortOrders[colIndex] = dir;
+        
+        rows.sort((a, b) => {
+            let aText = a.cells[colIndex].innerText.trim().toLowerCase();
+            let bText = b.cells[colIndex].innerText.trim().toLowerCase();
+            
+            // กรณีเป็นคอลัมน์สถานะ (ซ่อน/แสดง) ให้เช็คจากคำว่า "ถูกซ่อน"
+            if (colIndex === 2) {
+                aText = aText.includes('ถูกซ่อน') ? '0' : '1';
+                bText = bText.includes('ถูกซ่อน') ? '0' : '1';
+            }
+
+            if (aText < bText) return dir === 'asc' ? -1 : 1;
+            if (aText > bText) return dir === 'asc' ? 1 : -1;
+            return 0;
+        });
+        
+        // นำแถวที่จัดเรียงแล้วใส่กลับเข้าไปใหม่
+        tbody.innerHTML = '';
+        rows.forEach(row => tbody.appendChild(row));
+        
+        // อัปเดตลูกศรบนหัวตาราง
+        const headers = table.querySelectorAll("th.sortable");
+        headers.forEach((th, index) => {
+            let icon = '↕️';
+            if (index === colIndex) {
+                icon = dir === 'asc' ? '🔼' : '🔽';
+            }
+            th.innerHTML = th.innerHTML.replace(/[↕️🔼🔽]/g, '').trim() + ' ' + icon;
+        });
     }
 </script>
 {% endblock %}

@@ -31,7 +31,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'd16aae0acc60c55a8886fc6e9c6b04f5') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Config สำหรับการอัปโหลดรูป
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'svg'}
@@ -249,7 +248,7 @@ def admin_dashboard():
     hidden_map = {(s.subject, s.topic): s.is_hidden for s in settings}
     
     topics_status = []
-    all_subjects_set = set() # เก็บลายชื่อวิชาสำหรับหน้า Export
+    all_subjects_set = set() 
     
     for subj, top in all_topics_query:
         topics_status.append({
@@ -360,6 +359,9 @@ def admin_toggle_topic():
     db.session.commit()
     return jsonify({'status': 'ok', 'is_hidden': setting.is_hidden})
 
+# =========================================================
+# [แก้ไขบั๊ก] การย้ายวิชา (Move Topic) โดยใช้ UPDATE SQL ตรงๆ
+# =========================================================
 @app.route('/api/admin/move_topic', methods=['POST'])
 @admin_required
 def admin_move_topic():
@@ -377,10 +379,10 @@ def admin_move_topic():
             return jsonify({'status': 'error', 'message': 'ไม่มีสิทธิ์จัดการหรือย้ายไปยังวิชาดังกล่าว'}), 403
 
     try:
-        questions = Question.query.filter_by(subject=old_subject, topic=topic).all()
-        for q in questions:
-            q.subject = new_subject
+        # 1. ย้ายโจทย์ข้อสอบทั้งหมดด้วย .update() (เพื่อป้องกัน Database Caching)
+        Question.query.filter_by(subject=old_subject, topic=topic).update({"subject": new_subject})
 
+        # 2. จัดการ TopicSetting เพื่อไม่ให้การซ่อน/แสดงเพี้ยน
         existing_setting = TopicSetting.query.filter_by(subject=new_subject, topic=topic).first()
         old_setting = TopicSetting.query.filter_by(subject=old_subject, topic=topic).first()
         
@@ -390,10 +392,11 @@ def admin_move_topic():
         else:
             if old_setting:
                 old_setting.subject = new_subject 
+            else:
+                db.session.add(TopicSetting(subject=new_subject, topic=topic, is_hidden=True))
 
-        sessions = ExerciseSession.query.filter_by(subject=old_subject, topic=topic).all()
-        for s in sessions:
-            s.subject = new_subject
+        # 3. ย้ายประวัติผู้ใช้ เพื่อให้กราฟติดไปด้วย
+        ExerciseSession.query.filter_by(subject=old_subject, topic=topic).update({"subject": new_subject})
 
         db.session.commit()
         return jsonify({'status': 'ok', 'message': f'ย้ายหัวข้อ "{topic}" ไปยังวิชา "{new_subject}" สำเร็จแล้ว'})
@@ -426,16 +429,24 @@ def bulk_manage_questions():
         if action == 'delete':
             AnswerTransaction.query.filter(AnswerTransaction.question_id.in_(q_ids)).delete(synchronize_session=False)
             Question.query.filter(Question.id.in_(q_ids)).delete(synchronize_session=False)
+        
         elif action == 'move_subject':
             if not new_value: return jsonify({'status': 'error', 'message': 'กรุณาระบุชื่อวิชาใหม่'}), 400
+            
+            # บังคับ Update ตรงไปที่ Database
+            Question.query.filter(Question.id.in_(q_ids)).update({"subject": new_value})
+            
             for q in questions:
-                q.subject = new_value
                 if not TopicSetting.query.filter_by(subject=new_value, topic=q.topic).first():
                     db.session.add(TopicSetting(subject=new_value, topic=q.topic, is_hidden=True))
+        
         elif action == 'change_topic':
             if not new_value: return jsonify({'status': 'error', 'message': 'กรุณาระบุชื่อหัวข้อใหม่'}), 400
+            
+            # บังคับ Update ตรงไปที่ Database
+            Question.query.filter(Question.id.in_(q_ids)).update({"topic": new_value})
+            
             for q in questions:
-                q.topic = new_value
                 if not TopicSetting.query.filter_by(subject=q.subject, topic=new_value).first():
                     db.session.add(TopicSetting(subject=q.subject, topic=new_value, is_hidden=True))
         else:
@@ -527,7 +538,6 @@ def export_sessions():
 
     results = query.order_by(ExerciseSession.created_at.desc()).all()
     
-    # โหลด Transactions ทั้งหมดเพื่อนำมาคำนวณจำนวนข้อ Level 1-5 แบบรวดเร็ว
     session_ids = [sess.id for sess, user in results]
     if session_ids:
         transactions = AnswerTransaction.query.filter(AnswerTransaction.session_id.in_(session_ids)).all()
@@ -541,8 +551,6 @@ def export_sessions():
     data = []
     for sess, user in results:
         sess_trans = trans_by_session[sess.id]
-        
-        # เตรียมที่เก็บสถิติ Level 1-5
         stats = {i: {'attempted': 0, 'correct': 0} for i in range(1, 6)}
         
         for t in sess_trans:
@@ -578,7 +586,6 @@ def export_sessions():
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Sessions')
     else:
-        # สร้างคอลัมน์เปล่าเผื่อกรณีไม่มีข้อมูล
         cols = ['Session ID', 'Username', 'Student ID', 'Subject', 'Topic', 'Avg Score', 'Time',
                 'level1', 'level1correct', 'level2', 'level2correct', 'level3', 'level3correct',
                 'level4', 'level4correct', 'level5', 'level5correct']
