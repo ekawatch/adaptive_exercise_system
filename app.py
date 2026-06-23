@@ -164,6 +164,7 @@ def register():
             db.session.add(new_user)
             db.session.flush() 
             
+            # ให้สิทธิ์วิชา Default ทันทีที่สมัคร
             db.session.add(StudentSubjectAccess(user_id=new_user.id, subject='General'))
             
             db.session.commit()
@@ -297,6 +298,7 @@ def admin_users():
     
     all_subjects = []
     all_perms = {} 
+    admin_list = []
     
     if current_user.is_super_admin:
         subjects_query = db.session.query(Question.subject).distinct().all()
@@ -304,12 +306,13 @@ def admin_users():
         
         for a in admins:
             all_perms[a.username] = a.allowed_subjects
+            admin_list.append(a.username)
             
         for u in users:
             access = StudentSubjectAccess.query.filter_by(user_id=u.id).all()
             all_perms[u.username] = [a.subject for a in access]
             
-    return render_template('admin_users.html', users=users, admins=admins, all_subjects=all_subjects, all_perms=all_perms)
+    return render_template('admin_users.html', users=users, admins=admins, all_subjects=all_subjects, all_perms=all_perms, admin_list=admin_list)
 
 @app.route('/api/admin/reset_password', methods=['POST'])
 @admin_required
@@ -329,6 +332,7 @@ def manage_user_access():
     data = request.json
     usernames = data.get('usernames', []) 
     subjects = data.get('subjects')
+    is_admin_flag = data.get('is_admin', False) 
     
     if not usernames:
         return jsonify({'status': 'error', 'message': 'กรุณาเลือกผู้ใช้งานอย่างน้อย 1 คน'}), 400
@@ -338,12 +342,20 @@ def manage_user_access():
         
         if not user:
             hashed_pw = generate_password_hash('password1234', method='scrypt')
-            user = User(username=username, password=hashed_pw, student_id=0, is_admin=True, allowed_subjects=subjects)
+            user = User(username=username, password=hashed_pw, student_id=0, is_admin=is_admin_flag, allowed_subjects=subjects if is_admin_flag else None)
             db.session.add(user)
+            if not is_admin_flag and subjects: 
+                db.session.flush()
+                for subj in subjects:
+                    db.session.add(StudentSubjectAccess(user_id=user.id, subject=subj))
         else:
-            if user.is_admin:
+            user.is_admin = is_admin_flag
+            
+            if is_admin_flag:
                 user.allowed_subjects = subjects
+                StudentSubjectAccess.query.filter_by(user_id=user.id).delete()
             else:
+                user.allowed_subjects = None
                 StudentSubjectAccess.query.filter_by(user_id=user.id).delete()
                 if subjects: 
                     for subj in subjects:

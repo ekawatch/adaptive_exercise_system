@@ -33,7 +33,6 @@
     {% if current_user.is_super_admin %}
     <h3 class="mt-4 text-danger fw-bold" data-th="ระบบ Super Admin: จัดการสิทธิ์การเข้าถึงวิชา" data-en="Super Admin: Manage Access">ระบบ Super Admin: จัดการสิทธิ์การเข้าถึงวิชา</h3>
     
-    <!-- กล่องจัดการสิทธิ์แบบกลุ่ม (Bulk Manage Access) -->
     <div class="card p-4 mb-4 shadow-sm border-danger">
         <div class="row mb-3">
             
@@ -41,7 +40,6 @@
             <div class="col-md-5">
                 <label class="form-label fw-bold text-dark" data-th="เลือกผู้ใช้งาน (Username)" data-en="Select User (Username)">เลือกผู้ใช้งาน (Username)</label>
                 
-                <!-- เปลี่ยนเป็น select multiple ให้เลือกหลายคนได้ -->
                 <select id="adminUserSelect" class="form-select border-danger" multiple size="7" onchange="loadAdminPerms()">
                     <optgroup label="Admins (ผู้สอนปัจจุบัน)">
                         {% for a in admins %}
@@ -62,8 +60,16 @@
             
             <!-- เลือกวิชาที่อนุญาต (Checkbox) -->
             <div class="col-md-7">
-                <label class="form-label fw-bold text-dark" data-th="กำหนดสิทธิ์การจัดการรายวิชา" data-en="Assign Subject Permissions">กำหนดสิทธิ์การจัดการรายวิชา</label>
+                <label class="form-label fw-bold text-dark" data-th="กำหนดสถานะและสิทธิ์" data-en="Assign Role and Permissions">กำหนดสถานะและสิทธิ์</label>
                 
+                <!-- [NEW] Checkbox กำหนดให้เป็น Admin -->
+                <div class="form-check mb-3 pb-2 border-bottom border-danger">
+                    <input class="form-check-input" type="checkbox" id="isAdminRole">
+                    <label class="form-check-label fw-bold text-danger" for="isAdminRole" data-th="แต่งตั้งให้เป็นผู้สอน (Admin)" data-en="Set as Instructor (Admin)">
+                        แต่งตั้งให้เป็นผู้สอน (Admin)
+                    </label>
+                </div>
+
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="allowAllSubjects" onchange="toggleSubjectCheckboxes()" checked>
                     <label class="form-check-label fw-bold text-success" for="allowAllSubjects" data-th="อนุญาตทุกวิชา (All Subjects)" data-en="Allow all subjects">
@@ -158,6 +164,7 @@
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     let deleteModalInstance = null;
     const allPerms = {{ all_perms|tojson|safe }};
+    const adminList = {{ admin_list|tojson|safe }}; // รายชื่อแอดมินทั้งหมด
 
     document.addEventListener("DOMContentLoaded", function() {
         if(typeof applyLanguage === 'function') applyLanguage();
@@ -176,8 +183,6 @@
     }
 
     // ================= ระบบจัดการสิทธิ์แบบกลุ่ม (Multi-select) =================
-    
-    // ดึงรายชื่อทั้งหมดที่ถูกคลุมดำใน Dropdown
     function getSelectedUsernames() {
         const select = document.getElementById('adminUserSelect');
         return Array.from(select.selectedOptions).map(opt => opt.value);
@@ -192,26 +197,28 @@
         const selectedUsers = getSelectedUsernames();
         const allowAllCb = document.getElementById('allowAllSubjects');
         const subjCbs = document.querySelectorAll('.subj-cb');
+        const isAdminCb = document.getElementById('isAdminRole');
 
-        // ถ้าเลือกหลายคน ให้ล้าง Checkbox ออกให้หมด เพื่อเตรียมเซ็ตค่าใหม่ทีเดียว
         if(selectedUsers.length !== 1) {
             allowAllCb.checked = false;
+            isAdminCb.checked = false; // ถ้าเลือกหลายคนให้สถานะ Admin ว่างไว้ก่อน
             subjCbs.forEach(cb => cb.checked = false);
             toggleSubjectCheckboxes();
             return;
         }
 
-        // ถ้าเลือกคนเดียว ให้โหลดสิทธิ์เก่าของคนนั้นมาแสดง
         const selectedUser = selectedUsers[0];
+        
+        // ติ๊กช่อง Admin หากผู้ใช้นี้เป็น Admin อยู่แล้ว
+        isAdminCb.checked = adminList.includes(selectedUser);
+
         if(!allPerms.hasOwnProperty(selectedUser)) {
-            allowAllCb.checked = true; // ค่าเริ่มต้นถ้าหาประวัติไม่เจอ
+            allowAllCb.checked = true;
         } else {
             const perms = allPerms[selectedUser];
             if(perms === null) {
-                // null คือ Admin ที่ดูได้ทุกวิชา
                 allowAllCb.checked = true;
             } else {
-                // array วิชาของนักเรียน หรือ Admin ที่ถูกจำกัดสิทธิ์
                 allowAllCb.checked = false;
                 subjCbs.forEach(cb => {
                     cb.checked = perms.includes(cb.value);
@@ -230,11 +237,10 @@
 
         let subjects = null;
         const isAll = document.getElementById('allowAllSubjects').checked;
+        const isAdmin = document.getElementById('isAdminRole').checked;
         
-        // ถ้าไม่ได้ติ๊ก "อนุญาตทุกวิชา" ให้ส่งเป็น Array ของรายชื่อวิชาไป
         if(!isAll) {
             subjects = Array.from(document.querySelectorAll('.subj-cb:checked')).map(cb => cb.value);
-            // ถ้าไม่ติ๊กเลย จะได้ subjects = [] ซึ่งฝั่ง Backend จะรับรู้ว่าให้ลบสิทธิ์ทั้งหมด
         }
 
         if(!confirm(t(`ยืนยันการเปลี่ยนสิทธิ์ให้กับผู้ใช้งาน ${usernames.length} คน ใช่หรือไม่?`, `Confirm changing access for ${usernames.length} users?`))) return;
@@ -242,7 +248,11 @@
         fetch('/api/super/manage_user_access', { 
             method:'POST', 
             headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, 
-            body:JSON.stringify({usernames: usernames, subjects: subjects}) 
+            body:JSON.stringify({
+                usernames: usernames, 
+                subjects: subjects,
+                is_admin: isAdmin // ส่งสถานะให้ backend
+            }) 
         })
         .then(res=>res.json())
         .then(data=> {
