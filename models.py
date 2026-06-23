@@ -13,21 +13,23 @@ class User(UserMixin, db.Model):
     student_id = db.Column(db.BigInteger, nullable=True) 
     is_admin = db.Column(db.Boolean, default=False) 
     is_super_admin = db.Column(db.Boolean, default=False)
-    allowed_subjects = db.Column(JSON, nullable=True)
+    allowed_subjects = db.Column(JSON, nullable=True) # สำหรับ Admin
     
+# [เพิ่มใหม่] ตารางจับคู่นักเรียนกับวิชาที่เข้าถึงได้ (Many-to-Many แบบง่าย)
+class StudentSubjectAccess(db.Model):
+    __tablename__ = 'student_subject_access'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    subject = db.Column(db.String(100), nullable=False)
+
 class Question(db.Model):
     __tablename__ = 'questions'
     id = db.Column(db.Integer, primary_key=True)
     subject = db.Column(db.String(100), nullable=False, default='General')
     topic = db.Column(db.String(100), nullable=False)
     question_text = db.Column(db.Text, nullable=False)
-    
-    # รูปแบบเก่า (เก็บไว้เพื่อไม่ให้ Database พัง)
     image_filename = db.Column(db.String(255), nullable=True) 
-    
-    # รูปแบบใหม่ (เก็บรูปภาพเป็น Base64 String)
     image_data = db.Column(db.Text, nullable=True) 
-    
     choices = db.Column(JSON, nullable=False)
     correct_idx = db.Column(db.Integer, nullable=False)
     difficulty = db.Column(db.Integer, nullable=False)

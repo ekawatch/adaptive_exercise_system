@@ -31,17 +31,18 @@
     </table>
 
     {% if current_user.is_super_admin %}
-    <h3 class="mt-4 text-danger fw-bold" data-th="ระบบ Super Admin: จัดการสิทธิ์ผู้สอน" data-en="Super Admin: Manage Instructors">ระบบ Super Admin: จัดการสิทธิ์ผู้สอน</h3>
+    <h3 class="mt-4 text-danger fw-bold" data-th="ระบบ Super Admin: จัดการสิทธิ์การเข้าถึงวิชา" data-en="Super Admin: Manage Access">ระบบ Super Admin: จัดการสิทธิ์การเข้าถึงวิชา</h3>
     
-    <!-- กล่องจัดการสิทธิ์แอดมิน (แบบใหม่: Dropdown + Checkbox) -->
+    <!-- กล่องจัดการสิทธิ์แบบกลุ่ม (Bulk Manage Access) -->
     <div class="card p-4 mb-4 shadow-sm border-danger">
         <div class="row mb-3">
-            <!-- เลือกผู้ใช้งาน (Dropdown) -->
+            
+            <!-- เลือกผู้ใช้งาน (Multiple Dropdown) -->
             <div class="col-md-5">
                 <label class="form-label fw-bold text-dark" data-th="เลือกผู้ใช้งาน (Username)" data-en="Select User (Username)">เลือกผู้ใช้งาน (Username)</label>
-                <select id="adminUserSelect" class="form-select border-danger" onchange="loadAdminPerms()">
-                    <option value="" data-th="-- เลือกผู้ใช้งานเพื่อแต่งตั้ง/แก้ไข --" data-en="-- Select user to promote/edit --">-- เลือกผู้ใช้งานเพื่อแต่งตั้ง/แก้ไข --</option>
-                    
+                
+                <!-- เปลี่ยนเป็น select multiple ให้เลือกหลายคนได้ -->
+                <select id="adminUserSelect" class="form-select border-danger" multiple size="7" onchange="loadAdminPerms()">
                     <optgroup label="Admins (ผู้สอนปัจจุบัน)">
                         {% for a in admins %}
                         <option value="{{ a.username }}">{{ a.username }}</option>
@@ -54,13 +55,15 @@
                         {% endfor %}
                     </optgroup>
                 </select>
+                <div class="form-text text-muted">
+                    <span data-th="* กด Ctrl (หรือ Cmd) ค้างไว้เพื่อเลือกหลายคนพร้อมกัน" data-en="* Hold Ctrl (or Cmd) to select multiple users">* กด Ctrl (หรือ Cmd) ค้างไว้เพื่อเลือกหลายคนพร้อมกัน</span>
+                </div>
             </div>
             
             <!-- เลือกวิชาที่อนุญาต (Checkbox) -->
             <div class="col-md-7">
                 <label class="form-label fw-bold text-dark" data-th="กำหนดสิทธิ์การจัดการรายวิชา" data-en="Assign Subject Permissions">กำหนดสิทธิ์การจัดการรายวิชา</label>
                 
-                <!-- ตัวเลือกอนุญาตทั้งหมด -->
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="allowAllSubjects" onchange="toggleSubjectCheckboxes()" checked>
                     <label class="form-check-label fw-bold text-success" for="allowAllSubjects" data-th="อนุญาตทุกวิชา (All Subjects)" data-en="Allow all subjects">
@@ -68,10 +71,9 @@
                     </label>
                 </div>
                 
-                <!-- รายชื่อวิชาทั้งหมด (แสดงเมื่อไม่ติ๊ก All Subjects) -->
                 <div id="subjectCheckboxes" class="p-3 border rounded bg-light" style="display: none; max-height: 150px; overflow-y: auto;">
                     {% for subj in all_subjects %}
-                    <div class="form-check form-check-inline">
+                    <div class="form-check">
                         <input class="form-check-input subj-cb" type="checkbox" value="{{ subj }}" id="cb_{{ loop.index }}">
                         <label class="form-check-label" for="cb_{{ loop.index }}">{{ subj }}</label>
                     </div>
@@ -84,7 +86,7 @@
         
         <div class="row">
             <div class="col-12 text-end">
-                <button class="btn btn-danger fw-bold px-4" onclick="manageAdmin()" data-th="บันทึก / อัปเดตสิทธิ์แอดมิน" data-en="Save / Update Admin Permissions">บันทึก / อัปเดตสิทธิ์แอดมิน</button>
+                <button class="btn btn-danger fw-bold px-4" onclick="manageAccess()" data-th="บันทึก / อัปเดตสิทธิ์ผู้ใช้งาน" data-en="Save / Update User Permissions">บันทึก / อัปเดตสิทธิ์ผู้ใช้งาน</button>
             </div>
         </div>
     </div>
@@ -122,7 +124,7 @@
     {% endif %}
 </div>
 
-<!-- ================= MODAL สำหรับยืนยันการลบและใส่รหัสผ่าน ================= -->
+<!-- ================= MODAL ลบผู้ใช้งาน ================= -->
 <div class="modal fade" id="deleteUserModal" tabindex="-1" aria-labelledby="deleteUserModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content border-danger">
@@ -135,16 +137,12 @@
             <span data-th="คุณกำลังจะลบบัญชีผู้ใช้งาน:" data-en="You are about to delete user:">คุณกำลังจะลบบัญชีผู้ใช้งาน:</span> 
             <strong id="del-username-display" class="text-danger fs-5"></strong>
         </p>
-        <p class="text-muted small" data-th="การกระทำนี้จะลบข้อมูลและประวัติการทำแบบฝึกหัดทั้งหมดของบัญชีนี้ออกจากฐานข้อมูลโดยถาวร (ไม่สามารถกู้คืนได้)" data-en="This action will permanently delete all records and exercise histories of this account from the database (Cannot be undone).">
-            การกระทำนี้จะลบข้อมูลและประวัติการทำแบบฝึกหัดทั้งหมดของบัญชีนี้ออกจากฐานข้อมูลโดยถาวร (ไม่สามารถกู้คืนได้)
+        <p class="text-muted small" data-th="การกระทำนี้จะลบข้อมูลและประวัติการทำแบบฝึกหัดทั้งหมดของบัญชีนี้ออกจากฐานข้อมูลโดยถาวร" data-en="This action will permanently delete all records of this account.">
+            การกระทำนี้จะลบข้อมูลและประวัติการทำแบบฝึกหัดทั้งหมดของบัญชีนี้ออกจากฐานข้อมูลโดยถาวร
         </p>
-        
         <input type="hidden" id="del-target-user-id">
-        
         <div class="mb-3 mt-4 p-3 bg-light border rounded">
-            <label class="form-label fw-bold text-dark" data-th="🔐 กรุณายืนยันรหัสผ่าน Super Admin ของคุณ:" data-en="🔐 Please enter your Super Admin password:">
-                🔐 กรุณายืนยันรหัสผ่าน Super Admin ของคุณ:
-            </label>
+            <label class="form-label fw-bold text-dark" data-th="🔐 กรุณายืนยันรหัสผ่าน Super Admin ของคุณ:" data-en="🔐 Please enter your Super Admin password:">🔐 กรุณายืนยันรหัสผ่าน Super Admin ของคุณ:</label>
             <input type="password" id="superadmin-password-input" class="form-control border-danger" placeholder="••••••••">
         </div>
       </div>
@@ -155,14 +153,11 @@
     </div>
   </div>
 </div>
-<!-- ==================================================================== -->
 
 <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     let deleteModalInstance = null;
-
-    // ข้อมูลสิทธิ์ของ Admin ที่ถูกส่งมาจาก Backend
-    const adminPerms = {{ admin_perms|tojson|safe }};
+    const allPerms = {{ all_perms|tojson|safe }};
 
     document.addEventListener("DOMContentLoaded", function() {
         if(typeof applyLanguage === 'function') applyLanguage();
@@ -173,38 +168,51 @@
     function resetPassword(id) {
         if(!confirm(t('ยืนยันการรีเซ็ตรหัสผ่าน?', 'Confirm password reset?'))) return;
         fetch('/api/admin/reset_password', { 
-            method:'POST', 
-            headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, 
-            body:JSON.stringify({user_id:id}) 
-        })
-        .then(res=>res.json())
-        .then(data=> { 
+            method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({user_id:id}) 
+        }).then(res=>res.json()).then(data=> { 
             if(data.status === 'ok') alert(`${t('รหัสผ่านใหม่:', 'New Password:')} ${data.new_password}`); 
             else alert(data.message);
         });
     }
 
-    // ================= ระบบจัดการสิทธิ์แอดมิน (แบบใหม่) =================
-    // ซ่อนหรือแสดง Checkbox วิชา
+    // ================= ระบบจัดการสิทธิ์แบบกลุ่ม (Multi-select) =================
+    
+    // ดึงรายชื่อทั้งหมดที่ถูกคลุมดำใน Dropdown
+    function getSelectedUsernames() {
+        const select = document.getElementById('adminUserSelect');
+        return Array.from(select.selectedOptions).map(opt => opt.value);
+    }
+
     function toggleSubjectCheckboxes() {
         const isAll = document.getElementById('allowAllSubjects').checked;
         document.getElementById('subjectCheckboxes').style.display = isAll ? 'none' : 'block';
     }
 
-    // โหลดข้อมูลเก่ามาติ๊ก Checkbox อัตโนมัติเมื่อเลือกชื่อจาก Dropdown
     function loadAdminPerms() {
-        const selectedUser = document.getElementById('adminUserSelect').value;
+        const selectedUsers = getSelectedUsernames();
         const allowAllCb = document.getElementById('allowAllSubjects');
         const subjCbs = document.querySelectorAll('.subj-cb');
 
-        if(!selectedUser || !adminPerms.hasOwnProperty(selectedUser)) {
-            allowAllCb.checked = true; // ค่าเริ่มต้นถ้าเป็น User ใหม่
+        // ถ้าเลือกหลายคน ให้ล้าง Checkbox ออกให้หมด เพื่อเตรียมเซ็ตค่าใหม่ทีเดียว
+        if(selectedUsers.length !== 1) {
+            allowAllCb.checked = false;
+            subjCbs.forEach(cb => cb.checked = false);
+            toggleSubjectCheckboxes();
+            return;
+        }
+
+        // ถ้าเลือกคนเดียว ให้โหลดสิทธิ์เก่าของคนนั้นมาแสดง
+        const selectedUser = selectedUsers[0];
+        if(!allPerms.hasOwnProperty(selectedUser)) {
+            allowAllCb.checked = true; // ค่าเริ่มต้นถ้าหาประวัติไม่เจอ
         } else {
-            const perms = adminPerms[selectedUser];
+            const perms = allPerms[selectedUser];
             if(perms === null) {
-                allowAllCb.checked = true; // All subjects
+                // null คือ Admin ที่ดูได้ทุกวิชา
+                allowAllCb.checked = true;
             } else {
-                allowAllCb.checked = false; // Specific subjects
+                // array วิชาของนักเรียน หรือ Admin ที่ถูกจำกัดสิทธิ์
+                allowAllCb.checked = false;
                 subjCbs.forEach(cb => {
                     cb.checked = perms.includes(cb.value);
                 });
@@ -213,34 +221,33 @@
         toggleSubjectCheckboxes();
     }
 
-    // ส่งข้อมูลบันทึกสิทธิ์
-    function manageAdmin() {
-        const user = document.getElementById('adminUserSelect').value;
-        if(!user) {
-            alert(t('กรุณาเลือกผู้ใช้งานก่อนครับ', 'Please select a user first.'));
+    function manageAccess() {
+        const usernames = getSelectedUsernames();
+        if(usernames.length === 0) {
+            alert(t('กรุณาเลือกผู้ใช้งานก่อนครับ (กด Ctrl ค้างเพื่อเลือกหลายคน)', 'Please select at least one user.'));
             return;
         }
 
         let subjects = null;
         const isAll = document.getElementById('allowAllSubjects').checked;
         
+        // ถ้าไม่ได้ติ๊ก "อนุญาตทุกวิชา" ให้ส่งเป็น Array ของรายชื่อวิชาไป
         if(!isAll) {
             subjects = Array.from(document.querySelectorAll('.subj-cb:checked')).map(cb => cb.value);
-            if(subjects.length === 0) {
-                alert(t('กรุณาเลือกอย่างน้อย 1 วิชา หรือกดยอมรับทุกวิชา', 'Please select at least 1 subject or check Allow All.'));
-                return;
-            }
+            // ถ้าไม่ติ๊กเลย จะได้ subjects = [] ซึ่งฝั่ง Backend จะรับรู้ว่าให้ลบสิทธิ์ทั้งหมด
         }
 
-        fetch('/api/super/manage_admin', { 
+        if(!confirm(t(`ยืนยันการเปลี่ยนสิทธิ์ให้กับผู้ใช้งาน ${usernames.length} คน ใช่หรือไม่?`, `Confirm changing access for ${usernames.length} users?`))) return;
+
+        fetch('/api/super/manage_user_access', { 
             method:'POST', 
             headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, 
-            body:JSON.stringify({username: user, subjects: subjects}) 
+            body:JSON.stringify({usernames: usernames, subjects: subjects}) 
         })
         .then(res=>res.json())
         .then(data=> {
             if(data.status === 'ok') {
-                alert(t('บันทึกสิทธิ์เรียบร้อย', 'Permissions saved successfully'));
+                alert(t(data.message, data.message));
                 location.reload();
             } else {
                 alert(data.message);
@@ -268,23 +275,14 @@
         fetch('/api/super/delete_user', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-            body: JSON.stringify({ 
-                target_user_id: targetId, 
-                superadmin_password: password 
-            })
+            body: JSON.stringify({ target_user_id: targetId, superadmin_password: password })
         })
         .then(res => res.json())
         .then(data => {
-            if (data.status === 'ok') {
-                alert(data.message);
-                location.reload(); 
-            } else {
-                alert(t('ข้อผิดพลาด: ', 'Error: ') + data.message);
-            }
+            if (data.status === 'ok') { alert(data.message); location.reload(); } 
+            else { alert(t('ข้อผิดพลาด: ', 'Error: ') + data.message); }
         })
-        .catch(err => {
-            alert(t('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'Unable to connect to the server.'));
-        });
+        .catch(err => alert(t('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'Unable to connect to the server.')));
     }
 </script>
 {% endblock %}

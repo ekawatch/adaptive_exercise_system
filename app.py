@@ -16,7 +16,7 @@ from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import StringField, PasswordField, IntegerField, FileField
 from wtforms.validators import DataRequired, Length, EqualTo, ValidationError
 from sqlalchemy import func, text 
-from models import db, User, Question, ExerciseSession, AnswerTransaction, TopicSetting 
+from models import db, User, Question, ExerciseSession, AnswerTransaction, TopicSetting, StudentSubjectAccess
 
 app = Flask(__name__)
 
@@ -31,6 +31,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'd16aae0acc60c55a8886fc6e9c6b04f5') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Config สำหรับการอัปโหลดรูป
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'svg'}
@@ -115,6 +116,27 @@ def get_hidden_topics():
     hidden = TopicSetting.query.filter_by(is_hidden=True).all()
     return {(h.subject, h.topic) for h in hidden}
 
+# ==========================================
+# AUTO-MIGRATION สิทธิ์นักเรียนเก่าตอนเริ่มระบบ
+# ==========================================
+def migrate_student_access():
+    students = User.query.filter_by(is_admin=False).all()
+    for student in students:
+        existing = StudentSubjectAccess.query.filter_by(user_id=student.id).first()
+        if not existing:
+            past_subjects = db.session.query(ExerciseSession.subject).filter_by(user_id=student.id).distinct().all()
+            subjects_to_add = [s[0] for s in past_subjects if s[0]]
+            
+            if not subjects_to_add:
+                subjects_to_add = ['General']
+                
+            for subj in subjects_to_add:
+                db.session.add(StudentSubjectAccess(user_id=student.id, subject=subj))
+    db.session.commit()
+
+# ==========================================
+# จัดการ Database อัตโนมัติ
+# ==========================================
 with app.app_context():
     db.create_all()
     try:
@@ -124,6 +146,7 @@ with app.app_context():
         db.session.rollback()
 
     create_initial_admin()
+    migrate_student_access()
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -139,6 +162,10 @@ def register():
             hashed_pw = generate_password_hash(form.password.data, method='scrypt')
             new_user = User(username=form.username.data, password=hashed_pw, student_id=form.student_id.data, is_admin=False)
             db.session.add(new_user)
+            db.session.flush() 
+            
+            db.session.add(StudentSubjectAccess(user_id=new_user.id, subject='General'))
+            
             db.session.commit()
             flash('สมัครสมาชิกสำเร็จ กรุณาเข้าสู่ระบบ')
             return redirect(url_for('login'))
@@ -269,15 +296,20 @@ def admin_users():
     admins = User.query.filter_by(is_admin=True).all() if current_user.is_super_admin else []
     
     all_subjects = []
-    admin_perms = {}
+    all_perms = {} 
     
     if current_user.is_super_admin:
         subjects_query = db.session.query(Question.subject).distinct().all()
         all_subjects = [s[0] for s in subjects_query if s[0]]
+        
         for a in admins:
-            admin_perms[a.username] = a.allowed_subjects
+            all_perms[a.username] = a.allowed_subjects
             
-    return render_template('admin_users.html', users=users, admins=admins, all_subjects=all_subjects, admin_perms=admin_perms)
+        for u in users:
+            access = StudentSubjectAccess.query.filter_by(user_id=u.id).all()
+            all_perms[u.username] = [a.subject for a in access]
+            
+    return render_template('admin_users.html', users=users, admins=admins, all_subjects=all_subjects, all_perms=all_perms)
 
 @app.route('/api/admin/reset_password', methods=['POST'])
 @admin_required
@@ -291,23 +323,34 @@ def admin_reset_password():
     db.session.commit()
     return jsonify({'status': 'ok', 'new_password': new_raw_password, 'username': user.username})
 
-@app.route('/api/super/manage_admin', methods=['POST'])
+@app.route('/api/super/manage_user_access', methods=['POST'])
 @super_admin_required
-def manage_admin():
+def manage_user_access():
     data = request.json
-    username = data.get('username')
+    usernames = data.get('usernames', []) 
     subjects = data.get('subjects')
     
-    user = User.query.filter_by(username=username).first()
-    if not user:
-        hashed_pw = generate_password_hash('password1234', method='scrypt')
-        user = User(username=username, password=hashed_pw, student_id=0, is_admin=True, allowed_subjects=subjects)
-        db.session.add(user)
-    else:
-        user.is_admin = True
-        user.allowed_subjects = subjects
+    if not usernames:
+        return jsonify({'status': 'error', 'message': 'กรุณาเลือกผู้ใช้งานอย่างน้อย 1 คน'}), 400
+
+    for username in usernames:
+        user = User.query.filter_by(username=username).first()
+        
+        if not user:
+            hashed_pw = generate_password_hash('password1234', method='scrypt')
+            user = User(username=username, password=hashed_pw, student_id=0, is_admin=True, allowed_subjects=subjects)
+            db.session.add(user)
+        else:
+            if user.is_admin:
+                user.allowed_subjects = subjects
+            else:
+                StudentSubjectAccess.query.filter_by(user_id=user.id).delete()
+                if subjects: 
+                    for subj in subjects:
+                        db.session.add(StudentSubjectAccess(user_id=user.id, subject=subj))
+                        
     db.session.commit()
-    return jsonify({'status': 'ok'})
+    return jsonify({'status': 'ok', 'message': 'บันทึกสิทธิ์ผู้ใช้งานเรียบร้อยแล้ว'})
 
 @app.route('/api/super/delete_user', methods=['POST'])
 @super_admin_required
@@ -330,6 +373,8 @@ def delete_user():
         return jsonify({'status': 'error', 'message': 'ไม่พบบัญชีผู้ใช้งานนี้ในระบบ'}), 404
 
     try:
+        StudentSubjectAccess.query.filter_by(user_id=target_user_id).delete()
+        
         sessions = ExerciseSession.query.filter_by(user_id=target_user_id).all()
         session_ids = [s.id for s in sessions]
         
@@ -359,9 +404,6 @@ def admin_toggle_topic():
     db.session.commit()
     return jsonify({'status': 'ok', 'is_hidden': setting.is_hidden})
 
-# =========================================================
-# [แก้ไขบั๊ก] การย้ายวิชา (Move Topic) โดยใช้ UPDATE SQL ตรงๆ
-# =========================================================
 @app.route('/api/admin/move_topic', methods=['POST'])
 @admin_required
 def admin_move_topic():
@@ -379,10 +421,7 @@ def admin_move_topic():
             return jsonify({'status': 'error', 'message': 'ไม่มีสิทธิ์จัดการหรือย้ายไปยังวิชาดังกล่าว'}), 403
 
     try:
-        # 1. ย้ายโจทย์ข้อสอบทั้งหมดด้วย .update() (เพื่อป้องกัน Database Caching)
         Question.query.filter_by(subject=old_subject, topic=topic).update({"subject": new_subject})
-
-        # 2. จัดการ TopicSetting เพื่อไม่ให้การซ่อน/แสดงเพี้ยน
         existing_setting = TopicSetting.query.filter_by(subject=new_subject, topic=topic).first()
         old_setting = TopicSetting.query.filter_by(subject=old_subject, topic=topic).first()
         
@@ -395,9 +434,7 @@ def admin_move_topic():
             else:
                 db.session.add(TopicSetting(subject=new_subject, topic=topic, is_hidden=True))
 
-        # 3. ย้ายประวัติผู้ใช้ เพื่อให้กราฟติดไปด้วย
         ExerciseSession.query.filter_by(subject=old_subject, topic=topic).update({"subject": new_subject})
-
         db.session.commit()
         return jsonify({'status': 'ok', 'message': f'ย้ายหัวข้อ "{topic}" ไปยังวิชา "{new_subject}" สำเร็จแล้ว'})
     except Exception as e:
@@ -429,23 +466,15 @@ def bulk_manage_questions():
         if action == 'delete':
             AnswerTransaction.query.filter(AnswerTransaction.question_id.in_(q_ids)).delete(synchronize_session=False)
             Question.query.filter(Question.id.in_(q_ids)).delete(synchronize_session=False)
-        
         elif action == 'move_subject':
             if not new_value: return jsonify({'status': 'error', 'message': 'กรุณาระบุชื่อวิชาใหม่'}), 400
-            
-            # บังคับ Update ตรงไปที่ Database
             Question.query.filter(Question.id.in_(q_ids)).update({"subject": new_value})
-            
             for q in questions:
                 if not TopicSetting.query.filter_by(subject=new_value, topic=q.topic).first():
                     db.session.add(TopicSetting(subject=new_value, topic=q.topic, is_hidden=True))
-        
         elif action == 'change_topic':
             if not new_value: return jsonify({'status': 'error', 'message': 'กรุณาระบุชื่อหัวข้อใหม่'}), 400
-            
-            # บังคับ Update ตรงไปที่ Database
             Question.query.filter(Question.id.in_(q_ids)).update({"topic": new_value})
-            
             for q in questions:
                 if not TopicSetting.query.filter_by(subject=q.subject, topic=new_value).first():
                     db.session.add(TopicSetting(subject=q.subject, topic=new_value, is_hidden=True))
@@ -683,11 +712,14 @@ def admin_stats():
 def index():
     if current_user.is_admin: return redirect(url_for('admin_dashboard'))
 
-    if current_user.is_super_admin or not current_user.allowed_subjects:
-        all_topics_query = db.session.query(Question.subject, Question.topic).distinct().all()
-    else:
-        allowed = current_user.allowed_subjects
-        all_topics_query = db.session.query(Question.subject, Question.topic).filter(Question.subject.in_(allowed)).distinct().all()
+    student_access = StudentSubjectAccess.query.filter_by(user_id=current_user.id).all()
+    allowed_subjects = [a.subject for a in student_access]
+    
+    if not allowed_subjects:
+        return render_template('index.html', subject_topics={}, graphs_data=[], challenge=None, summary_chart_data={'labels':[], 'data':[]})
+
+    all_topics_query = db.session.query(Question.subject, Question.topic)\
+        .filter(Question.subject.in_(allowed_subjects)).distinct().all()
 
     hidden_topics = get_hidden_topics()
     
@@ -700,7 +732,7 @@ def index():
             visible_topics_flat.append((subj, top))
     
     sessions = ExerciseSession.query.filter_by(user_id=current_user.id).order_by(ExerciseSession.created_at).all()
-    visible_sessions = [s for s in sessions if (s.subject, s.topic) not in hidden_topics]
+    visible_sessions = [s for s in sessions if (s.subject, s.topic) not in hidden_topics and s.subject in allowed_subjects]
     
     grouped = defaultdict(list)
     for s in visible_sessions: grouped[(s.subject, s.topic)].append(s)
@@ -734,6 +766,12 @@ def index():
 @login_required
 def quiz_page(subject, topic):
     if current_user.is_admin: return redirect(url_for('admin_dashboard'))
+    
+    access = StudentSubjectAccess.query.filter_by(user_id=current_user.id, subject=subject).first()
+    if not access:
+        flash(f'คุณไม่มีสิทธิ์เข้าถึงวิชา {subject}')
+        return redirect(url_for('index'))
+
     if (subject, topic) in get_hidden_topics():
         flash(f'หัวข้อ "{topic}" วิชา {subject} ปิดปรับปรุงอยู่')
         return redirect(url_for('index'))
