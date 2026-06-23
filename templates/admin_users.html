@@ -62,7 +62,6 @@
             <div class="col-md-7">
                 <label class="form-label fw-bold text-dark" data-th="กำหนดสถานะและสิทธิ์" data-en="Assign Role and Permissions">กำหนดสถานะและสิทธิ์</label>
                 
-                <!-- [NEW] Checkbox กำหนดให้เป็น Admin -->
                 <div class="form-check mb-3 pb-2 border-bottom border-danger">
                     <input class="form-check-input" type="checkbox" id="isAdminRole">
                     <label class="form-check-label fw-bold text-danger" for="isAdminRole" data-th="แต่งตั้งให้เป็นผู้สอน (Admin)" data-en="Set as Instructor (Admin)">
@@ -164,7 +163,7 @@
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     let deleteModalInstance = null;
     const allPerms = {{ all_perms|tojson|safe }};
-    const adminList = {{ admin_list|tojson|safe }}; // รายชื่อแอดมินทั้งหมด
+    const adminList = {{ admin_list|tojson|safe }}; 
 
     document.addEventListener("DOMContentLoaded", function() {
         if(typeof applyLanguage === 'function') applyLanguage();
@@ -199,24 +198,27 @@
         const subjCbs = document.querySelectorAll('.subj-cb');
         const isAdminCb = document.getElementById('isAdminRole');
 
+        // กรณีเลือกหลายคน ให้ล้างสิทธิ์เดิมโชว์รอให้แอดมินตั้งค่าใหม่
         if(selectedUsers.length !== 1) {
             allowAllCb.checked = false;
-            isAdminCb.checked = false; // ถ้าเลือกหลายคนให้สถานะ Admin ว่างไว้ก่อน
+            isAdminCb.checked = false;
             subjCbs.forEach(cb => cb.checked = false);
             toggleSubjectCheckboxes();
             return;
         }
 
         const selectedUser = selectedUsers[0];
-        
-        // ติ๊กช่อง Admin หากผู้ใช้นี้เป็น Admin อยู่แล้ว
         isAdminCb.checked = adminList.includes(selectedUser);
 
         if(!allPerms.hasOwnProperty(selectedUser)) {
             allowAllCb.checked = true;
         } else {
             const perms = allPerms[selectedUser];
+            const totalSubj = subjCbs.length;
+            
             if(perms === null) {
+                allowAllCb.checked = true;
+            } else if (perms.length === totalSubj && totalSubj > 0) {
                 allowAllCb.checked = true;
             } else {
                 allowAllCb.checked = false;
@@ -251,7 +253,7 @@
             body:JSON.stringify({
                 usernames: usernames, 
                 subjects: subjects,
-                is_admin: isAdmin // ส่งสถานะให้ backend
+                is_admin: isAdmin 
             }) 
         })
         .then(res=>res.json())

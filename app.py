@@ -31,7 +31,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'd16aae0acc60c55a8886fc6e9c6b04f5') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Config สำหรับการอัปโหลดรูป
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'svg'}
@@ -116,9 +115,6 @@ def get_hidden_topics():
     hidden = TopicSetting.query.filter_by(is_hidden=True).all()
     return {(h.subject, h.topic) for h in hidden}
 
-# ==========================================
-# AUTO-MIGRATION สิทธิ์นักเรียนเก่าตอนเริ่มระบบ
-# ==========================================
 def migrate_student_access():
     students = User.query.filter_by(is_admin=False).all()
     for student in students:
@@ -134,9 +130,6 @@ def migrate_student_access():
                 db.session.add(StudentSubjectAccess(user_id=student.id, subject=subj))
     db.session.commit()
 
-# ==========================================
-# จัดการ Database อัตโนมัติ
-# ==========================================
 with app.app_context():
     db.create_all()
     try:
@@ -164,7 +157,6 @@ def register():
             db.session.add(new_user)
             db.session.flush() 
             
-            # ให้สิทธิ์วิชา Default ทันทีที่สมัคร
             db.session.add(StudentSubjectAccess(user_id=new_user.id, subject='General'))
             
             db.session.commit()
@@ -326,27 +318,40 @@ def admin_reset_password():
     db.session.commit()
     return jsonify({'status': 'ok', 'new_password': new_raw_password, 'username': user.username})
 
+
+# =========================================================
+# [แก้ไขบั๊ก] ตรรกะจัดการวิชา (กรณีอนุญาตทุกวิชา / ส่งมาเป็น Null)
+# =========================================================
 @app.route('/api/super/manage_user_access', methods=['POST'])
 @super_admin_required
 def manage_user_access():
     data = request.json
     usernames = data.get('usernames', []) 
-    subjects = data.get('subjects')
+    subjects = data.get('subjects') # ถ้า isAll=true ตัวนี้จะเป็น None
     is_admin_flag = data.get('is_admin', False) 
     
     if not usernames:
         return jsonify({'status': 'error', 'message': 'กรุณาเลือกผู้ใช้งานอย่างน้อย 1 คน'}), 400
 
+    # ดึงรายวิชาทั้งหมดมาเตรียมไว้ เผื่อกรณีเลือก "อนุญาตทุกวิชา" (None)
+    all_subjects_query = db.session.query(Question.subject).distinct().all()
+    all_subjects = [s[0] for s in all_subjects_query if s[0]]
+
     for username in usernames:
         user = User.query.filter_by(username=username).first()
         
+        # ถ้ารับ subjects=None หมายถึงทุกวิชา ให้เอาลิสต์ all_subjects ไปใช้งานแทน 
+        # ถ้าส่งมาเป็น [] คือต้องการถอดทุกวิชา
+        assign_subjs = all_subjects if subjects is None else subjects
+
         if not user:
             hashed_pw = generate_password_hash('password1234', method='scrypt')
             user = User(username=username, password=hashed_pw, student_id=0, is_admin=is_admin_flag, allowed_subjects=subjects if is_admin_flag else None)
             db.session.add(user)
-            if not is_admin_flag and subjects: 
+            
+            if not is_admin_flag: 
                 db.session.flush()
-                for subj in subjects:
+                for subj in assign_subjs:
                     db.session.add(StudentSubjectAccess(user_id=user.id, subject=subj))
         else:
             user.is_admin = is_admin_flag
@@ -357,9 +362,9 @@ def manage_user_access():
             else:
                 user.allowed_subjects = None
                 StudentSubjectAccess.query.filter_by(user_id=user.id).delete()
-                if subjects: 
-                    for subj in subjects:
-                        db.session.add(StudentSubjectAccess(user_id=user.id, subject=subj))
+                # ให้สิทธิ์ตาม assign_subjs ที่ถูกคำนวณมาแล้ว
+                for subj in assign_subjs:
+                    db.session.add(StudentSubjectAccess(user_id=user.id, subject=subj))
                         
     db.session.commit()
     return jsonify({'status': 'ok', 'message': 'บันทึกสิทธิ์ผู้ใช้งานเรียบร้อยแล้ว'})
