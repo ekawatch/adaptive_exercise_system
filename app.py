@@ -124,7 +124,7 @@ def migrate_student_access():
             subjects_to_add = [s[0] for s in past_subjects if s[0]]
             
             if not subjects_to_add:
-                subjects_to_add = ['General']
+                subjects_to_add = ['Pre-calculus']
                 
             for subj in subjects_to_add:
                 db.session.add(StudentSubjectAccess(user_id=student.id, subject=subj))
@@ -157,7 +157,7 @@ def register():
             db.session.add(new_user)
             db.session.flush() 
             
-            db.session.add(StudentSubjectAccess(user_id=new_user.id, subject='General'))
+            db.session.add(StudentSubjectAccess(user_id=new_user.id, subject='Pre-calculus'))
             
             db.session.commit()
             flash('สมัครสมาชิกสำเร็จ กรุณาเข้าสู่ระบบ')
